@@ -25,7 +25,7 @@ export default function LoginPage() {
     if (error) return setMsg(`Erro: ${error.message}`);
 
     setMsg("Login OK ✅");
-    router.push("/dashboard");
+    router.push("/dashboard/athletes");
     router.refresh();
   }
 
