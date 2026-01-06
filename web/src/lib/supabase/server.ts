@@ -1,27 +1,24 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
-export function createClient() {
-  const cookieStore = cookies();
+/**
+ * Server client (Server Components / Route Handlers)
+ * Next 16: APIs dinâmicas como cookies() podem ser async.
+ */
+export async function createClient() {
+  const cookieStore = await cookies();
 
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        getAll() {
+        async getAll() {
           return cookieStore.getAll();
         },
-        setAll(cookiesToSet) {
-          // Em Server Components nem sempre dá pra setar cookie (quem faz isso é o proxy/middleware).
-          // Então deixamos em try/catch.
-          try {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              cookieStore.set(name, value, options);
-            });
-          } catch {
-            // ignora
-          }
+        async setAll(_cookiesToSet) {
+          // No Server Component geralmente não dá pra setar cookie aqui.
+          // Quem mantém sessão/cookies atualizado é o proxy/middleware (updateSession).
         },
       },
     }
