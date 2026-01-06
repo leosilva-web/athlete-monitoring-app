@@ -57,11 +57,13 @@ export default function AddMeasurementForm({ athleteId }: { athleteId: string })
     }
 
     // minutos opcional
-    const minutes = sessionMinutes.trim() === "" ? null : Number(sessionMinutes);
-    if (sessionMinutes.trim() !== "" if (sessionMinutes.trim() !== "" && (!Number.isFinite(minutes) || minutes < 0)) {if (sessionMinutes.trim() !== "" && (!Number.isFinite(minutes) || minutes < 0)) { (!Number.isFinite(minutes as number) || (minutes as number) < 0)) {
-      setMsg("Tempo de sessão inválido.");
-      return;
-    }
+    const minutesStr = sessionMinutes.trim();
+const minutes = minutesStr === "" ? null : Number(minutesStr);
+
+if (minutes !== null && (!Number.isFinite(minutes) || minutes < 0)) {
+  setMsg("Tempo de sessão inválido.");
+  return;
+}
 
     // rpe opcional (0-10)
     const rpe = sessionRpe.trim() === "" ? null : Number(sessionRpe);
