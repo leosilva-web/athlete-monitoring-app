@@ -20,19 +20,14 @@ export default function LoginPage() {
   }
 
   async function signIn() {
-  setMsg("Entrando...");
-  console.log("Cliquei Entrar. Email:", email);
+    setMsg("Entrando...");
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) return setMsg(`Erro: ${error.message}`);
 
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-
-  console.log("Retorno signInWithPassword:", { data, error });
-
-  if (error) return setMsg(`Erro: ${error.message}`);
-
-  setMsg("Login OK ✅");
-  router.push("/dashboard");
-router.refresh();
-}
+    setMsg("Login OK ✅");
+    router.push("/dashboard");
+    router.refresh();
+  }
 
   async function signOut() {
     await supabase.auth.signOut();
@@ -40,48 +35,39 @@ router.refresh();
   }
 
   return (
-  <div style={{ maxWidth: 420, margin: "40px auto", padding: 16 }}>
-    <h1>Login</h1>
+    <div style={{ maxWidth: 420, margin: "40px auto", padding: 16 }}>
+      <h1>Login</h1>
 
-    <label htmlFor="email">Email</label>
-    <input
-      id="email"
-      name="email"
-      style={{ width: "100%", padding: 8, margin: "6px 0 12px" }}
-      value={email}
-      onChange={(e) => setEmail(e.target.value)}
-      placeholder="seuemail@exemplo.com"
-      autoComplete="email"
-    />
+      <label htmlFor="email">Email</label>
+      <input
+        id="email"
+        name="email"
+        style={{ width: "100%", padding: 8, margin: "6px 0 12px" }}
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        placeholder="seuemail@exemplo.com"
+        autoComplete="email"
+      />
 
-    <label htmlFor="password">Senha</label>
-    <input
-      id="password"
-      name="password"
-      style={{ width: "100%", padding: 8, margin: "6px 0 12px" }}
-      type="password"
-      value={password}
-      onChange={(e) => setPassword(e.target.value)}
-      placeholder="mínimo 6 caracteres"
-      autoComplete="current-password"
-    />
+      <label htmlFor="password">Senha</label>
+      <input
+        id="password"
+        name="password"
+        style={{ width: "100%", padding: 8, margin: "6px 0 12px" }}
+        type="password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        placeholder="mínimo 6 caracteres"
+        autoComplete="current-password"
+      />
 
-    <div style={{ display: "flex", gap: 8 }}>
-      <button
-  type="button"
-  onClick={() => {
-    console.log("✅ CLIQUEI NO BOTÃO ENTRAR");
-    <button type="button" onClick={signIn}>Entrar</button>
-  }}
->
-  Entrar
-</button>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button type="button" onClick={signIn}>Entrar</button>
+        <button type="button" onClick={signUp}>Criar conta</button>
+        <button type="button" onClick={signOut}>Sair</button>
+      </div>
 
-      <button type="button" onClick={signUp}>Cadastrar</button>
-      <button type="button" onClick={signOut}>Sair</button>
+      <p style={{ marginTop: 12 }}>{msg}</p>
     </div>
-
-    <p style={{ marginTop: 12 }}>{msg}</p>
-  </div>
-);
+  );
 }
