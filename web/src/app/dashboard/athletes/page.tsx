@@ -1,13 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
 import AddAthleteForm from "./AddAthleteForm";
 import DeleteAthleteButton from "./DeleteAthleteButton";
+import EditAthleteName from "./EditAthleteName";
 
 export default async function AthletesPage() {
   const supabase = await createClient();
   const { data: userData, error: userError } = await supabase.auth.getUser();
 
   if (userError || !userData?.user) {
-    // o layout já protege, mas deixo por segurança
     return <div>Não autenticado.</div>;
   }
 
@@ -44,8 +44,8 @@ export default async function AthletesPage() {
             }}
           >
             <div>
-              <b>{a.name}</b>{" "}
-              <span style={{ opacity: 0.7, fontSize: 12 }}>
+              <EditAthleteName athleteId={a.id} initialName={a.name} />
+              <span style={{ opacity: 0.7, fontSize: 12, marginLeft: 8 }}>
                 ({new Date(a.created_at).toLocaleString()})
               </span>
             </div>
