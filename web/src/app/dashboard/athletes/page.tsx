@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import AddAthleteForm from "./AddAthleteForm";
 import DeleteAthleteButton from "./DeleteAthleteButton";
@@ -50,7 +51,21 @@ export default async function AthletesPage() {
               </span>
             </div>
 
-            <DeleteAthleteButton athleteId={a.id} athleteName={a.name} />
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <Link
+                href={`/dashboard/athletes/${a.id}/measurements`}
+                style={{
+                  padding: "6px 10px",
+                  border: "1px solid rgba(255,255,255,0.18)",
+                  borderRadius: 8,
+                  textDecoration: "none",
+                }}
+              >
+                Medições
+              </Link>
+
+              <DeleteAthleteButton athleteId={a.id} athleteName={a.name} />
+            </div>
           </li>
         ))}
       </ul>
