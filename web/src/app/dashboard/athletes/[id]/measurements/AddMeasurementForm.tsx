@@ -1,107 +1,111 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-function todayISODate() {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
+type Props = {
+  athleteId: string;
+};
+
+function isIntInRange(n: number, min: number, max: number) {
+  return Number.isInteger(n) && n >= min && n <= max;
 }
 
-export default function AddMeasurementForm({ athleteId }: { athleteId: string }) {
-  const supabase = createClient();
+export default function AddMeasurementForm({ athleteId }: Props) {
   const router = useRouter();
+  const supabase = createClient();
 
-  const [date, setDate] = useState<string>(todayISODate());
-  const [weightKg, setWeightKg] = useState<string>("");
+  const [date, setDate] = useState(""); // yyyy-mm-dd
+  const [weightKg, setWeightKg] = useState("");
 
-  // escalas 1-5
-  const [fatigue, setFatigue] = useState<number>(3);
-  const [sleepQuality, setSleepQuality] = useState<number>(3);
-  const [soreness, setSoreness] = useState<number>(3);
-  const [stress, setStress] = useState<number>(3);
-  const [mood, setMood] = useState<number>(3);
+  // Escalas 1–5 (obrigatórias)
+  const [fatigue, setFatigue] = useState("3");
+  const [sleepQuality, setSleepQuality] = useState("3");
+  const [generalMuscleSoreness, setGeneralMuscleSoreness] = useState("3");
+  const [stressLevels, setStressLevels] = useState("3");
+  const [mood, setMood] = useState("3");
 
-  const [sessionMinutes, setSessionMinutes] = useState<string>("");
-  const [sessionRpe, setSessionRpe] = useState<string>("");
+  // Sessão (obrigatórias)
+  const [sessionMinutes, setSessionMinutes] = useState("");
+  const [sessionRpe, setSessionRpe] = useState("");
 
   const [msg, setMsg] = useState<string>("");
-  const [loading, setLoading] = useState<boolean>(false);
 
-  const trainingLoad = useMemo(() => {
-    const min = Number(sessionMinutes);
-    const rpe = Number(sessionRpe);
-    if (!Number.isFinite(min) || !Number.isFinite(rpe)) return null;
-    if (sessionMinutes.trim() === "" || sessionRpe.trim() === "") return null;
-    return Math.round(min * rpe);
-  }, [sessionMinutes, sessionRpe]);
-
-  async function onSubmit() {
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
     setMsg("");
 
-    if (!date) {
-      setMsg("Escolha uma data.");
+    // DATE obrigatório
+    if (date.trim() === "") {
+      setMsg("Data do check-in é obrigatória.");
       return;
     }
 
-    // weight opcional
-    const weight =
-      weightKg.trim() === "" ? null : Number(String(weightKg).replace(",", "."));
-    if (weightKg.trim() !== "" && !Number.isFinite(weight)) {
-      setMsg("Peso inválido.");
+    // WEIGHT obrigatório (aceita vírgula)
+    const weight = Number(weightKg.replace(",", "."));
+    if (weightKg.trim() === "" || !Number.isFinite(weight) || weight <= 0) {
+      setMsg("Peso inválido. Ex.: 82.5");
       return;
     }
 
-    // minutos opcional
-    const minutesStr = sessionMinutes.trim();
-const minutes = minutesStr === "" ? null : Number(minutesStr);
+    // Escalas 1–5 obrigatórias
+    const f = Number(fatigue);
+    const sq = Number(sleepQuality);
+    const gms = Number(generalMuscleSoreness);
+    const st = Number(stressLevels);
+    const md = Number(mood);
 
-if (minutes !== null && (!Number.isFinite(minutes) || minutes < 0)) {
-  setMsg("Tempo de sessão inválido.");
-  return;
-}
+    if (!isIntInRange(f, 1, 5)) return setMsg("Fatigue inválido (1 a 5).");
+    if (!isIntInRange(sq, 1, 5)) return setMsg("Sleep quality inválido (1 a 5).");
+    if (!isIntInRange(gms, 1, 5)) return setMsg("Muscle soreness inválido (1 a 5).");
+    if (!isIntInRange(st, 1, 5)) return setMsg("Stress levels inválido (1 a 5).");
+    if (!isIntInRange(md, 1, 5)) return setMsg("Mood inválido (1 a 5).");
 
-    // rpe opcional (0-10)
-    const rpe = sessionRpe.trim() === "" ? null : Number(sessionRpe);
-    if (
-      sessionRpe.trim() !== "" &&
-      (!Number.isFinite(rpe) || rpe < 0 || rpe > 10)
-    ) {
+    // MINUTES obrigatório
+    const minutes = Number(sessionMinutes);
+    if (sessionMinutes.trim() === "" || !Number.isFinite(minutes) || minutes <= 0) {
+      setMsg("Tempo de sessão inválido (minutos > 0).");
+      return;
+    }
+
+    // RPE obrigatório (0–10)
+    const rpe = Number(sessionRpe);
+    if (sessionRpe.trim() === "" || !Number.isFinite(rpe) || rpe < 0 || rpe > 10) {
       setMsg("Session-RPE inválido (0 a 10).");
       return;
     }
 
-    setLoading(true);
     setMsg("Salvando...");
 
-    const { error } = await supabase.from("athlete_measurements").insert({
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError || !userData?.user) {
+      setMsg("Sessão expirada. Faça login novamente.");
+      return;
+    }
+
+    const payload = {
       athlete_id: athleteId,
-      date,
+      owner_id: userData.user.id,
+      date, // yyyy-mm-dd
       weight_kg: weight,
-      fatigue,
-      sleep_quality: sleepQuality,
-      general_muscle_soreness: soreness,
-      stress_levels: stress,
-      mood,
-      session_time_minutes: minutes,
+      fatigue: f,
+      sleep_quality: sq,
+      general_muscle_soreness: gms,
+      stress_levels: st,
+      mood: md,
+      session_minutes: Math.trunc(minutes),
       session_rpe: rpe,
-      // owner_id fica automático (default auth.uid())
-    });
+    };
 
-    setLoading(false);
-
+    const { error } = await supabase.from("athlete_measurements").insert(payload);
     if (error) {
-      setMsg(`Erro: ${error.message}`);
+      setMsg(`Erro ao salvar: ${error.message}`);
       return;
     }
 
     setMsg("Salvo ✅");
-
-    // opcional: limpar alguns campos
+    // limpa os campos do dia
     setWeightKg("");
     setSessionMinutes("");
     setSessionRpe("");
@@ -110,127 +114,117 @@ if (minutes !== null && (!Number.isFinite(minutes) || minutes < 0)) {
   }
 
   return (
-    <div style={{ marginTop: 16, padding: 12, border: "1px solid rgba(255,255,255,0.12)", borderRadius: 10 }}>
+    <form onSubmit={onSubmit} style={{ border: "1px solid rgba(255,255,255,0.12)", padding: 12, borderRadius: 10 }}>
       <h3 style={{ marginTop: 0 }}>Novo check-in</h3>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <div>
-          <label>Data</label>
+      <div style={{ display: "grid", gap: 10 }}>
+        <label>
+          Data (obrigatório)
           <input
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
             style={{ width: "100%", padding: 8, marginTop: 6 }}
+            required
           />
-        </div>
+        </label>
 
-        <div>
-          <label>Peso (kg)</label>
+        <label>
+          Peso (kg) (obrigatório)
           <input
             value={weightKg}
             onChange={(e) => setWeightKg(e.target.value)}
-            placeholder="ex: 78.5"
+            placeholder="ex: 82.5"
             style={{ width: "100%", padding: 8, marginTop: 6 }}
+            required
           />
+        </label>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <label>
+            Fatigue (1–5)
+            <select value={fatigue} onChange={(e) => setFatigue(e.target.value)} style={{ width: "100%", padding: 8, marginTop: 6 }}>
+              <option value="5">5</option>
+              <option value="4">4</option>
+              <option value="3">3</option>
+              <option value="2">2</option>
+              <option value="1">1</option>
+            </select>
+          </label>
+
+          <label>
+            Sleep quality (1–5)
+            <select value={sleepQuality} onChange={(e) => setSleepQuality(e.target.value)} style={{ width: "100%", padding: 8, marginTop: 6 }}>
+              <option value="5">5</option>
+              <option value="4">4</option>
+              <option value="3">3</option>
+              <option value="2">2</option>
+              <option value="1">1</option>
+            </select>
+          </label>
+
+          <label>
+            Muscle soreness (1–5)
+            <select value={generalMuscleSoreness} onChange={(e) => setGeneralMuscleSoreness(e.target.value)} style={{ width: "100%", padding: 8, marginTop: 6 }}>
+              <option value="5">5</option>
+              <option value="4">4</option>
+              <option value="3">3</option>
+              <option value="2">2</option>
+              <option value="1">1</option>
+            </select>
+          </label>
+
+          <label>
+            Stress levels (1–5)
+            <select value={stressLevels} onChange={(e) => setStressLevels(e.target.value)} style={{ width: "100%", padding: 8, marginTop: 6 }}>
+              <option value="5">5</option>
+              <option value="4">4</option>
+              <option value="3">3</option>
+              <option value="2">2</option>
+              <option value="1">1</option>
+            </select>
+          </label>
+
+          <label>
+            Mood (1–5)
+            <select value={mood} onChange={(e) => setMood(e.target.value)} style={{ width: "100%", padding: 8, marginTop: 6 }}>
+              <option value="5">5</option>
+              <option value="4">4</option>
+              <option value="3">3</option>
+              <option value="2">2</option>
+              <option value="1">1</option>
+            </select>
+          </label>
         </div>
 
-        <div>
-          <label>Fadiga (1–5)</label>
-          <input
-            type="number"
-            min={1}
-            max={5}
-            value={fatigue}
-            onChange={(e) => setFatigue(Number(e.target.value))}
-            style={{ width: "100%", padding: 8, marginTop: 6 }}
-          />
-        </div>
-
-        <div>
-          <label>Qualidade do sono (1–5)</label>
-          <input
-            type="number"
-            min={1}
-            max={5}
-            value={sleepQuality}
-            onChange={(e) => setSleepQuality(Number(e.target.value))}
-            style={{ width: "100%", padding: 8, marginTop: 6 }}
-          />
-        </div>
-
-        <div>
-          <label>Dor muscular geral (1–5)</label>
-          <input
-            type="number"
-            min={1}
-            max={5}
-            value={soreness}
-            onChange={(e) => setSoreness(Number(e.target.value))}
-            style={{ width: "100%", padding: 8, marginTop: 6 }}
-          />
-        </div>
-
-        <div>
-          <label>Nível de estresse (1–5)</label>
-          <input
-            type="number"
-            min={1}
-            max={5}
-            value={stress}
-            onChange={(e) => setStress(Number(e.target.value))}
-            style={{ width: "100%", padding: 8, marginTop: 6 }}
-          />
-        </div>
-
-        <div>
-          <label>Humor (1–5)</label>
-          <input
-            type="number"
-            min={1}
-            max={5}
-            value={mood}
-            onChange={(e) => setMood(Number(e.target.value))}
-            style={{ width: "100%", padding: 8, marginTop: 6 }}
-          />
-        </div>
-
-        <div />
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
-        <div>
-          <label>Tempo da sessão (min)</label>
+        <label>
+          Tempo de sessão (min) (obrigatório)
           <input
             value={sessionMinutes}
             onChange={(e) => setSessionMinutes(e.target.value)}
-            placeholder="ex: 60"
+            placeholder="ex: 75"
             style={{ width: "100%", padding: 8, marginTop: 6 }}
+            required
           />
-        </div>
+        </label>
 
-        <div>
-          <label>Session-RPE (0–10)</label>
+        <label>
+          Session-RPE (0–10) (obrigatório)
           <input
             value={sessionRpe}
             onChange={(e) => setSessionRpe(e.target.value)}
             placeholder="ex: 7"
             style={{ width: "100%", padding: 8, marginTop: 6 }}
+            required
           />
-        </div>
-      </div>
+        </label>
 
-      <div style={{ marginTop: 10, opacity: 0.85 }}>
-        {trainingLoad !== null && (
-          <div>Training Load (min × RPE): <b>{trainingLoad}</b></div>
-        )}
-      </div>
-
-      <div style={{ display: "flex", gap: 10, marginTop: 12, alignItems: "center" }}>
-        <button type="button" onClick={onSubmit} disabled={loading}>
-          {loading ? "Salvando..." : "Salvar check-in"}
+        <button type="submit" style={{ padding: "10px 12px", cursor: "pointer" }}>
+          Salvar check-in
         </button>
-        <span style={{ opacity: 0.85 }}>{msg}</span>
+
+        {msg && <p style={{ margin: 0, opacity: 0.9 }}>{msg}</p>}
       </div>
-    </div>
+    </form>
   );
 }
