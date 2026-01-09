@@ -55,8 +55,23 @@ export default async function MedicoesPage({ params }: { params: { id: string } 
   const { data: athlete, error: athleteError } = await supabase
     .from("athletes")
     .select("id, name, sexo, timezone")
-    .eq("id", params.id)
+    export default async function MedicoesPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params; // <<< ESSENCIAL
+
+  const supabase = await createClient();
+
+  const { data: athlete, error: athleteError } = await supabase
+    .from("athletes")
+    .select("id, name, sexo, timezone")
+    .eq("id", id) // <<< aqui
     .single();
+
+  // resto do arquivo...
+}
 
   if (athleteError || !athlete) {
   return (
