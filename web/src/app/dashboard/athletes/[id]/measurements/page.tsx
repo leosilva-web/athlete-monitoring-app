@@ -73,8 +73,6 @@ export default async function MedicoesPage({ params }: { params: { id: string } 
   // resto do arquivo...
 }
 
-    .single();
-
   if (athleteError || !athlete) {
   return (
     <div style={{ padding: 24 }}>
