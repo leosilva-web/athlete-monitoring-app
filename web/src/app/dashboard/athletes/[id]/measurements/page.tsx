@@ -39,7 +39,13 @@ function fmtTime(hhMmSs: string) {
   return (hhMmSs || "").slice(0, 5);
 }
 
-export default async function MedicoesPage({ params }: { params: { id: string } }) {
+export default async function MedicoesPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  // Next recente: params pode vir como Promise
+  const { id } = await params; // ESSENCIAL
   const supabase = await createClient();
 
   const { data: userData, error: userError } = await supabase.auth.getUser();
@@ -55,55 +61,39 @@ export default async function MedicoesPage({ params }: { params: { id: string } 
   const { data: athlete, error: athleteError } = await supabase
     .from("athletes")
     .select("id, name, sexo, timezone")
-    export default async function MedicoesPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const { id } = await params; // <<< ESSENCIAL
-
-  const supabase = await createClient();
-
-  const { data: athlete, error: athleteError } = await supabase
-    .from("athletes")
-    .select("id, name, sexo, timezone")
-    .eq("id", id) // <<< aqui
+    .eq("id", id)
     .single();
 
-  // resto do arquivo...
-}
-
   if (athleteError || !athlete) {
-  return (
-    <div style={{ padding: 24 }}>
-      <h2>Atleta não encontrado (ou sem permissão).</h2>
+    return (
+      <div style={{ padding: 24 }}>
+        <h2>Atleta não encontrado (ou sem permissão).</h2>
 
-      <pre style={{ marginTop: 16, fontSize: 12, whiteSpace: "pre-wrap" }}>
-        {JSON.stringify(
-          {
-            paramsId: params.id,
-            userId: userData?.user?.id ?? null,
-            athleteError: athleteError
-              ? {
-                  code: (athleteError as any).code ?? null,
-                  message: athleteError.message ?? null,
-                  details: (athleteError as any).details ?? null,
-                  hint: (athleteError as any).hint ?? null,
-                }
-              : null,
-          },
-          null,
-          2
-        )}
-      </pre>
+        <pre style={{ marginTop: 16, fontSize: 12, whiteSpace: "pre-wrap" }}>
+          {JSON.stringify(
+            {
+              paramsId: id,
+              userId: userData?.user?.id ?? null,
+              athleteError: athleteError
+                ? {
+                    code: (athleteError as any).code ?? null,
+                    message: athleteError.message ?? null,
+                    details: (athleteError as any).details ?? null,
+                    hint: (athleteError as any).hint ?? null,
+                  }
+                : null,
+            },
+            null,
+            2
+          )}
+        </pre>
 
-      <p style={{ marginTop: 16 }}>
-        <Link href="/dashboard/athletes">Voltar</Link>
-      </p>
-    </div>
-  );
-}
-
+        <p style={{ marginTop: 16 }}>
+          <Link href="/dashboard/athletes">Voltar</Link>
+        </p>
+      </div>
+    );
+  }
 
   const { data: bemEstar, error: beError } = await supabase
     .from("checkins_bem_estar")
