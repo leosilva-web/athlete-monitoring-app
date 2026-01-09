@@ -59,13 +59,36 @@ export default async function MedicoesPage({ params }: { params: { id: string } 
     .single();
 
   if (athleteError || !athlete) {
-    return (
-      <div style={{ padding: 16 }}>
-        <p>Atleta não encontrado (ou sem permissão).</p>
+  return (
+    <div style={{ padding: 24 }}>
+      <h2>Atleta não encontrado (ou sem permissão).</h2>
+
+      <pre style={{ marginTop: 16, fontSize: 12, whiteSpace: "pre-wrap" }}>
+        {JSON.stringify(
+          {
+            paramsId: params.id,
+            userId: userData?.user?.id ?? null,
+            athleteError: athleteError
+              ? {
+                  code: (athleteError as any).code ?? null,
+                  message: athleteError.message ?? null,
+                  details: (athleteError as any).details ?? null,
+                  hint: (athleteError as any).hint ?? null,
+                }
+              : null,
+          },
+          null,
+          2
+        )}
+      </pre>
+
+      <p style={{ marginTop: 16 }}>
         <Link href="/dashboard/athletes">Voltar</Link>
-      </div>
-    );
-  }
+      </p>
+    </div>
+  );
+}
+
 
   const { data: bemEstar, error: beError } = await supabase
     .from("checkins_bem_estar")
