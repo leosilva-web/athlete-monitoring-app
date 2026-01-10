@@ -47,11 +47,18 @@ export async function POST(req: Request) {
     await Promise.all([supabase.rpc("is_admin"), supabase.rpc("is_coach")]);
 
   if (adminErr || coachErr) {
-    return NextResponse.json(
-      { error: "Falha ao checar permissões (is_admin/is_coach)." },
-      { status: 500 }
-    );
-  }
+  return NextResponse.json(
+    {
+      error: "Falha ao checar permissões (is_admin/is_coach).",
+      details: {
+        adminErr,
+        coachErr,
+      },
+    },
+    { status: 500 }
+  );
+}
+
 
   const allowed =
     (targetRole === "coach" && isAdmin === true) ||
