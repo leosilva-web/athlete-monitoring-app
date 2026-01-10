@@ -43,34 +43,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "targetRole inválido." }, { status: 400 });
   }
 
-  const [{ data: isAdmin, error: adminErr }, { data: isCoach, error: coachErr }] =
-    await Promise.all([supabase.rpc("is_admin"), supabase.rpc("is_coach")]);
-
-  if (adminErr || coachErr) {
-  return NextResponse.json(
-    {
-      error: "Falha ao checar permissões (is_admin/is_coach).",
-      details: {
-        adminErr,
-        coachErr,
-      },
-    },
-    { status: 500 }
-  );
-}
-
-
-  const allowed =
-    (targetRole === "coach" && isAdmin === true) ||
-    (targetRole === "athlete" && isCoach === true);
-
-  if (!allowed) {
-    return NextResponse.json(
-      { error: "Sem permissão para criar este tipo de convite." },
-      { status: 403 }
-    );
-  }
-
   const token = randomTokenHex(24);
   const token_hash = sha256Hex(token);
   const expires_at = new Date(Date.now() + expiresInDays * 86400000).toISOString();
@@ -90,11 +62,26 @@ export async function POST(req: Request) {
     .single();
 
   if (error) {
-    return NextResponse.json(
-      { error: "Falha ao criar convite.", details: error.message },
-      { status: 400 }
-    );
-  }
+  const msg = (error.message || "").toLowerCase();
+
+  // Quando a RLS bloqueia, geralmente vem algo nessa linha:
+  // "new row violates row-level security policy ..."
+  const isRlsBlock =
+    msg.includes("row-level security") ||
+    msg.includes("violates row level security") ||
+    msg.includes("permission denied");
+
+  return NextResponse.json(
+    {
+      error: isRlsBlock
+        ? "Sem permissão para criar este tipo de convite."
+        : "Falha ao criar convite.",
+      details: error.message,
+    },
+    { status: isRlsBlock ? 403 : 400 }
+  );
+}
+
 
   const origin =
     req.headers.get("origin") ||
