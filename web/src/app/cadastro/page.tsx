@@ -25,13 +25,30 @@ function CadastroInner() {
 
     setLoading(true);
     try {
-      const { data, error } = await supabase.auth.signUp({ email, password });
-      if (error) return setMsg(`Falha no cadastro: ${error.message}`);
+      const { error: signUpErr } = await supabase.auth.signUp({ email, password });
+if (signUpErr) return setMsg(`Falha no cadastro: ${signUpErr.message}`);
 
-      const res = await fetch("/api/invites/consume", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token }),
+// GARANTE sessão antes de consumir (não confia no "autologin" pós-signup)
+const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
+if (signInErr) {
+  setMsg("Conta criada. Agora faça login para finalizar o convite.");
+  router.push("/login");
+  return;
+}
+
+const res = await fetch("/api/invites/consume", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ token }),
+});
+
+const json = await res.json();
+if (!res.ok) {
+  setMsg(`Falha ao consumir convite: ${json?.error || "erro"} (${json?.details || ""})`);
+  return;
+}
+
+router.push("/perfil");
       });
       const json = await res.json();
 
