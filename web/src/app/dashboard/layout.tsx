@@ -12,6 +12,23 @@ export default async function DashboardLayout({ children }: { children: ReactNod
     redirect("/login");
   }
 
+  // ✅ 1) Busca o role do usuário no profiles
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", data.user.id)
+    .single();
+
+  // ✅ 2) Se não achou profile ou deu erro, joga pro login (evita estado “meio quebrado”)
+  if (profileError || !profile?.role) {
+    redirect("/login");
+  }
+
+  // ✅ 3) Portão do dashboard: se não for coach/admin, chuta pra /inicio
+  if (profile.role !== "coach" && profile.role !== "admin") {
+    redirect("/inicio");
+  }
+
   return (
     <div style={{ maxWidth: 720, margin: "40px auto", padding: 16 }}>
       {/* Header */}
