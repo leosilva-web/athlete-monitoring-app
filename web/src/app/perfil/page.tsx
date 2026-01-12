@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -44,6 +44,31 @@ export default function PerfilPage() {
   // Senha
   const [newPassword, setNewPassword] = useState("");
   const [newPassword2, setNewPassword2] = useState("");
+
+  // Lista de fusos (IANA) suportados pelo navegador (mais comum/robusto)
+  // Baseado em Intl.supportedValuesOf("timeZone") (ECMA-402). :contentReference[oaicite:1]{index=1}
+  const tzOptions = useMemo(() => {
+    try {
+      const anyIntl = Intl as any;
+      if (typeof anyIntl.supportedValuesOf === "function") {
+        const list = anyIntl.supportedValuesOf("timeZone") as string[];
+        return Array.from(new Set(list)).sort();
+      }
+    } catch {
+      // ignore
+    }
+    // Fallback mínimo (caso raro de navegador sem suporte)
+    return [
+      "America/Fortaleza",
+      "America/Sao_Paulo",
+      "America/Recife",
+      "America/Manaus",
+      "America/Rio_Branco",
+      "Europe/Lisbon",
+      "Europe/London",
+      "UTC",
+    ];
+  }, []);
 
   async function loadProfile() {
     setLoading(true);
@@ -115,7 +140,7 @@ export default function PerfilPage() {
           sex: sex || null,
           birth_date: birthDate || null,
           team_name: teamName.trim() ? teamName.trim() : null,
-          timezone: timezone.trim() ? timezone.trim() : null,
+          timezone: timezone ? timezone : null,
         })
         .eq("id", userId);
 
@@ -215,11 +240,7 @@ export default function PerfilPage() {
   }
 
   if (loading) {
-    return (
-      <div style={{ padding: 16, fontFamily: "system-ui" }}>
-        Carregando perfil…
-      </div>
-    );
+    return <div style={{ padding: 16, fontFamily: "system-ui" }}>Carregando perfil…</div>;
   }
 
   const isCoachOrAdmin = role === "coach" || role === "admin";
@@ -266,11 +287,7 @@ export default function PerfilPage() {
           >
             {avatarUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={avatarUrl}
-                alt="avatar"
-                style={{ width: "100%", height: "100%", objectFit: "cover" }}
-              />
+              <img src={avatarUrl} alt="avatar" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
             ) : (
               <span style={{ opacity: 0.7, fontSize: 12 }}>Sem foto</span>
             )}
@@ -313,14 +330,17 @@ export default function PerfilPage() {
               <option value="">Selecionar</option>
               <option value="male">Masculino</option>
               <option value="female">Feminino</option>
-              <option value="other">Outro</option>
-              <option value="prefer_not_say">Prefiro não informar</option>
             </select>
           </label>
 
           <label style={{ display: "grid", gap: 6 }}>
             <span>Data de nascimento</span>
-            <input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} style={{ padding: 10 }} />
+            <input
+              type="date"
+              value={birthDate}
+              onChange={(e) => setBirthDate(e.target.value)}
+              style={{ padding: 10 }}
+            />
           </label>
 
           <label style={{ display: "grid", gap: 6 }}>
@@ -329,15 +349,17 @@ export default function PerfilPage() {
           </label>
 
           <label style={{ display: "grid", gap: 6 }}>
-            <span>Timezone (IANA)</span>
-            <input
-              value={timezone}
-              onChange={(e) => setTimezone(e.target.value)}
-              placeholder="Ex.: America/Fortaleza"
-              style={{ padding: 10 }}
-            />
+            <span>Fuso horário (IANA)</span>
+            <select value={timezone} onChange={(e) => setTimezone(e.target.value)} style={{ padding: 10 }}>
+              <option value="">Selecionar</option>
+              {tzOptions.map((tz) => (
+                <option key={tz} value={tz}>
+                  {tz}
+                </option>
+              ))}
+            </select>
             <small style={{ opacity: 0.75 }}>
-              Use formato IANA (ex.: America/Fortaleza, Europe/Lisbon).
+              Se não encontrar, role a lista (padrão IANA).
             </small>
           </label>
         </div>
