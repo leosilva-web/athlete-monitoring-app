@@ -74,6 +74,7 @@ function SelectEscala({
           background: "transparent",
           color: "inherit",
         }}
+        required
       >
         {opcoes.map(([n, d]) => (
           <option key={n} value={String(n)} style={{ color: "#000" }}>
@@ -98,7 +99,7 @@ export default function CheckInBemEstarForm({
 
   const [pesoKg, setPesoKg] = useState("");
 
-  // defaults “neutros” (obrigatórios, mas sem ficar “vazio”)
+  // defaults “neutros” (não ficam vazios)
   const [fadiga, setFadiga] = useState("3");
   const [sono, setSono] = useState("3");
   const [dor, setDor] = useState("3");
@@ -112,18 +113,22 @@ export default function CheckInBemEstarForm({
     return fase === "Fase Menstrual" || fase === "Fase Ovulatória" || fase === "Fase Lútea";
   }, [fase]);
 
+  // ✅ Prontidão automática (média simples 1–5)
+  const prontidao = useMemo(() => {
+    const v =
+      (Number(fadiga) + Number(sono) + Number(dor) + Number(estresse) + Number(humor)) / 5;
+    return Math.round(v * 10) / 10; // 1 casa decimal
+  }, [fadiga, sono, dor, estresse, humor]);
+
   const [msg, setMsg] = useState<string>("");
 
   function friendlyErrorMessage(raw: string) {
     const s = raw.toLowerCase();
 
-    if (s.includes("até 12:00") || s.includes("ate 12:00") || s.includes("12:00")) {
-      return "Check-in Bem-Estar só pode ser registrado até 12:00 (hora local do atleta).";
-    }
     if (s.includes("duplicate key") || s.includes("unique") || s.includes("checkins_bem_estar_unique")) {
-      return "Você já registrou o Check-in Bem-Estar de hoje para este atleta.";
+      return "Você já tem um check-in de bem-estar para hoje. Vamos atualizar o mesmo registro.";
     }
-    if (s.includes("fase do ciclo") && s.includes("obrig")) {
+    if (s.includes("fase") && s.includes("obrig")) {
       return "Fase do ciclo menstrual é obrigatória para atletas do sexo feminino.";
     }
     if (s.includes("intensidade") && s.includes("obrig")) {
@@ -155,7 +160,7 @@ export default function CheckInBemEstarForm({
 
     setMsg("Salvando...");
 
-    const payload = {
+    const payload: any = {
       athlete_id: athleteId,
       peso_kg: peso,
       fadiga: Number(fadiga),
@@ -167,7 +172,12 @@ export default function CheckInBemEstarForm({
       intensidade_dor: isFeminino && precisaIntensidade ? intensidade : null,
     };
 
-    const { error } = await supabase.from("checkins_bem_estar").insert(payload);
+    // ✅ 1 registro por dia (atualiza o mesmo ao salvar novamente)
+    // Requer UNIQUE (athlete_id, data_local) no banco (que você já tem/quer).
+    const { error } = await supabase
+      .from("checkins_bem_estar")
+      .upsert(payload, { onConflict: "athlete_id,data_local" });
+
     if (error) {
       setMsg(`Erro ao salvar: ${friendlyErrorMessage(error.message)}`);
       return;
@@ -178,7 +188,10 @@ export default function CheckInBemEstarForm({
   }
 
   return (
-    <form onSubmit={onSubmit} style={{ border: "1px solid rgba(255,255,255,0.15)", borderRadius: 14, padding: 14 }}>
+    <form
+      onSubmit={onSubmit}
+      style={{ border: "1px solid rgba(255,255,255,0.15)", borderRadius: 14, padding: 14 }}
+    >
       <h3 style={{ marginTop: 0 }}>Check-in Bem-Estar</h3>
 
       <label style={{ display: "block", marginBottom: 14 }}>
@@ -206,6 +219,14 @@ export default function CheckInBemEstarForm({
         <SelectEscala label="Dor Muscular (1–5)" value={dor} onChange={setDor} opcoes={OPCOES_DOR_MUSCULAR} />
         <SelectEscala label="Nível de Estresse (1–5)" value={estresse} onChange={setEstresse} opcoes={OPCOES_ESTRESSE} />
         <SelectEscala label="Humor (1–5)" value={humor} onChange={setHumor} opcoes={OPCOES_HUMOR} />
+      </div>
+
+      {/* ✅ Prontidão automática */}
+      <div style={{ marginTop: 12, opacity: 0.9 }}>
+        <b>Prontidão (média):</b> {prontidao}
+        <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
+          Calculado automaticamente como a média de Fadiga, Sono, Dor, Estresse e Humor.
+        </div>
       </div>
 
       {isFeminino && (
