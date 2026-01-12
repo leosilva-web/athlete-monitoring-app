@@ -46,8 +46,8 @@ export default async function BemEstarPage() {
   // ✅ Assumimos que o athlete.id = auth.user.id (como está no seu fluxo de convite)
   const { data: athlete, error: athleteError } = await supabase
     .from("athletes")
-    .select("id, name, sexo, timezone")
-    .eq("id", userData.user.id)
+    .select("id, owner_id, name, sexo, timezone")
+    .eq("owner_id", userData.user.id)
     .single();
 
   if (athleteError || !athlete) {
