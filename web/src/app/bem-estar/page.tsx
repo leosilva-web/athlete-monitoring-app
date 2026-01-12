@@ -43,20 +43,54 @@ export default async function BemEstarPage() {
     );
   }
 
-  // ✅ Assumimos que o athlete.id = auth.user.id (como está no seu fluxo de convite)
-  const { data: athlete, error: athleteError } = await supabase
+  // ✅ Tentativa 1: procurar atleta pelo owner_id (modelo comum com RLS)
+  const { data: athleteByOwner, error: e1 } = await supabase
     .from("athletes")
     .select("id, owner_id, name, sexo, timezone")
     .eq("owner_id", userData.user.id)
-    .single();
+    .maybeSingle();
 
-  if (athleteError || !athlete) {
+  // ✅ Tentativa 2 (fallback): alguns projetos usam athletes.id = auth.uid()
+  const { data: athleteById, error: e2 } = athleteByOwner
+    ? { data: null, error: null }
+    : await supabase
+        .from("athletes")
+        .select("id, owner_id, name, sexo, timezone")
+        .eq("id", userData.user.id)
+        .maybeSingle();
+
+  const athlete = athleteByOwner ?? athleteById;
+  const athleteError = e1 ?? e2;
+
+  if (!athlete) {
     return (
       <div style={{ padding: 24 }}>
         <h2>Atleta não encontrado (ou sem permissão).</h2>
         <p style={{ marginTop: 12 }}>
-          Isso geralmente significa que não existe uma linha em <code>athletes</code> com o mesmo ID do usuário logado.
+          Isso normalmente significa que ainda não existe uma linha em <code>athletes</code> vinculada a este usuário,
+          ou o RLS bloqueou a leitura.
         </p>
+
+        <pre style={{ marginTop: 16, fontSize: 12, whiteSpace: "pre-wrap" }}>
+          {JSON.stringify(
+            {
+              auth_user_id: userData.user.id,
+              try_owner_id: athleteByOwner ? "FOUND" : "NOT_FOUND",
+              try_id: athleteById ? "FOUND" : "NOT_FOUND",
+              error: athleteError
+                ? {
+                    message: athleteError.message ?? null,
+                    details: (athleteError as any).details ?? null,
+                    hint: (athleteError as any).hint ?? null,
+                    code: (athleteError as any).code ?? null,
+                  }
+                : null,
+            },
+            null,
+            2
+          )}
+        </pre>
+
         <p style={{ marginTop: 16 }}>
           <Link href="/inicio">Voltar</Link>
         </p>
@@ -88,9 +122,15 @@ export default async function BemEstarPage() {
         </div>
 
         <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-          <Link href="/inicio" style={{ opacity: 0.9 }}>Início</Link>
-          <Link href="/treino" style={{ opacity: 0.9 }}>Treino</Link>
-          <Link href="/perfil" style={{ opacity: 0.9 }}>Perfil</Link>
+          <Link href="/inicio" style={{ opacity: 0.9 }}>
+            Início
+          </Link>
+          <Link href="/treino" style={{ opacity: 0.9 }}>
+            Treino
+          </Link>
+          <Link href="/perfil" style={{ opacity: 0.9 }}>
+            Perfil
+          </Link>
           <SignOutButton />
         </div>
       </div>
