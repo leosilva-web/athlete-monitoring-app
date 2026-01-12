@@ -32,14 +32,20 @@ export default async function DashboardLayout({ children }: { children: ReactNod
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <Link href="/dashboard" style={{ textDecoration: "none" }}>
-            Dashboard
-          </Link>
-          <Link href="/dashboard/athletes" style={{ textDecoration: "none" }}>
-            Atletas
-          </Link>
-          <SignOutButton />
-        </div>
+  <Link href="/dashboard" style={{ textDecoration: "none" }}>
+    Dashboard
+  </Link>
+
+  <Link href="/dashboard/athletes" style={{ textDecoration: "none" }}>
+    Atletas
+  </Link>
+
+  <Link href="/perfil" style={{ textDecoration: "none" }}>
+    Perfil
+  </Link>
+
+  <SignOutButton />
+</div>
       </div>
 
       <hr style={{ margin: "16px 0", opacity: 0.2 }} />
