@@ -37,6 +37,20 @@ function mapSexoToPt(value: string | null | undefined) {
   return value || "";
 }
 
+function formatSupabaseError(err: any) {
+  if (!err) return null;
+  return JSON.stringify(
+    {
+      message: err.message ?? null,
+      details: err.details ?? null,
+      hint: err.hint ?? null,
+      code: err.code ?? null,
+    },
+    null,
+    2
+  );
+}
+
 export default async function BemEstarPage() {
   const supabase = await createClient();
 
@@ -52,37 +66,50 @@ export default async function BemEstarPage() {
 
   const userId = userData.user.id;
 
-  // 1) Tenta achar o atleta já existente (owner_id -> padrão)
-  const { data: byOwner } = await supabase
+  // 1) Tenta achar o atleta já existente por owner_id
+  const { data: athleteByOwner, error: e1 } = await supabase
     .from("athletes")
     .select("id, owner_id, name, sexo, timezone")
     .eq("owner_id", userId)
     .maybeSingle();
 
-  // 2) Fallback (alguns setups usam athletes.id = auth.uid())
-  const { data: byId } = byOwner
-    ? { data: null as any }
+  // 2) Fallback: alguns setups usam athletes.id = auth.uid()
+  const { data: athleteById, error: e2 } = athleteByOwner
+    ? { data: null as any, error: null as any }
     : await supabase
         .from("athletes")
         .select("id, owner_id, name, sexo, timezone")
         .eq("id", userId)
         .maybeSingle();
 
-  let athlete = byOwner ?? byId;
+  let athlete = athleteByOwner ?? athleteById;
 
-  // 3) Se NÃO existir atleta, tenta criar automaticamente usando dados do perfil
+  // 3) Se NÃO existir atleta, cria automaticamente usando dados do profile.
+  //    (Aqui usamos RETURNING via .select().single() para pegar o id real gerado no DB, se houver.)
   if (!athlete) {
-    const { data: profile } = await supabase
+    const { data: profile, error: pErr } = await supabase
       .from("profiles")
       .select("full_name, sex, timezone")
       .eq("id", userId)
       .maybeSingle();
 
+    if (pErr) {
+      return (
+        <div style={{ padding: 24 }}>
+          <h2>Erro ao ler perfil.</h2>
+          <pre style={{ marginTop: 12, fontSize: 12, whiteSpace: "pre-wrap" }}>{formatSupabaseError(pErr)}</pre>
+          <p style={{ marginTop: 16 }}>
+            <Link href="/perfil">Ir para Perfil</Link>
+          </p>
+        </div>
+      );
+    }
+
     const fullName = (profile?.full_name || "").trim();
     const sexoPt = mapSexoToPt(profile?.sex || "");
     const tz = (profile?.timezone || "").trim();
 
-    // Se o perfil ainda não estiver completo, manda pro /perfil preencher (coerente com “tudo obrigatório”)
+    // Perfil incompleto -> manda preencher (coerente com “tudo obrigatório”)
     if (!fullName || !sexoPt || !tz) {
       return (
         <div style={{ maxWidth: 720, margin: "40px auto", padding: 16, fontFamily: "system-ui" }}>
@@ -100,23 +127,28 @@ export default async function BemEstarPage() {
       );
     }
 
-    // Cria a linha em athletes
-    // (usando id = userId para bater com o ADR “athlete_id = auth.users.id”)
-    const { error: insErr } = await supabase.from("athletes").insert({
-      id: userId,
-      owner_id: userId,
-      name: fullName,
-      sexo: sexoPt,
-      timezone: tz,
-    });
+    // ✅ Cria e já pega o registro retornado (id real do DB)
+    const { data: createdAthlete, error: insErr } = await supabase
+      .from("athletes")
+      .insert({
+        // Se o DB permitir setar id = auth.uid(), ótimo. Se não permitir, ele gera e devolve no RETURNING.
+        id: userId,
+        owner_id: userId,
+        name: fullName,
+        sexo: sexoPt,
+        timezone: tz,
+      })
+      .select("id, owner_id, name, sexo, timezone")
+      .single();
 
-    if (insErr) {
+    if (insErr || !createdAthlete) {
       return (
         <div style={{ padding: 24 }}>
           <h2>Não foi possível criar seu registro de atleta.</h2>
-          <p style={{ marginTop: 12, opacity: 0.85 }}>
-            Erro: <b>{insErr.message}</b>
+          <p style={{ marginTop: 10, opacity: 0.85 }}>
+            Isso normalmente é <b>RLS</b> ou <b>constraint</b> no banco (coluna obrigatória, tipo diferente etc.).
           </p>
+          <pre style={{ marginTop: 12, fontSize: 12, whiteSpace: "pre-wrap" }}>{formatSupabaseError(insErr)}</pre>
           <p style={{ marginTop: 16 }}>
             <Link href="/perfil">Ir para Perfil</Link>
           </p>
@@ -124,14 +156,7 @@ export default async function BemEstarPage() {
       );
     }
 
-    // Recarrega o atleta recém-criado
-    const { data: created } = await supabase
-      .from("athletes")
-      .select("id, owner_id, name, sexo, timezone")
-      .eq("id", userId)
-      .maybeSingle();
-
-    athlete = created ?? null;
+    athlete = createdAthlete;
   }
 
   if (!athlete) {
@@ -141,6 +166,19 @@ export default async function BemEstarPage() {
         <p style={{ marginTop: 12 }}>
           Mesmo após tentar criar automaticamente, não foi possível localizar seu atleta.
         </p>
+        <pre style={{ marginTop: 12, fontSize: 12, whiteSpace: "pre-wrap" }}>
+          {JSON.stringify(
+            {
+              auth_user_id: userId,
+              try_owner_id: athleteByOwner ? "FOUND" : "NOT_FOUND",
+              try_id: athleteById ? "FOUND" : "NOT_FOUND",
+              error1: formatSupabaseError(e1),
+              error2: formatSupabaseError(e2),
+            },
+            null,
+            2
+          )}
+        </pre>
         <p style={{ marginTop: 16 }}>
           <Link href="/inicio">Voltar</Link>
         </p>
