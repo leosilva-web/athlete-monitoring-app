@@ -8,9 +8,18 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   const supabase = await createClient();
   const { data, error } = await supabase.auth.getUser();
 
-  if (error || !data?.user) {
-    redirect("/login");
-  }
+  if (error || !data?.user) redirect("/login");
+
+  // Checa role no profiles
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", data.user.id)
+    .single();
+
+  // Se não for coach/admin -> joga pro início do atleta
+  if (profileError || !profile?.role) redirect("/inicio");
+  if (profile.role !== "coach" && profile.role !== "admin") redirect("/inicio");
 
   return (
     <div style={{ maxWidth: 720, margin: "40px auto", padding: 16 }}>
