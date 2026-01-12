@@ -1,23 +1,228 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 
-export const dynamic = "force-dynamic";
+type Profile = {
+  id: string;
+  full_name: string | null;
+  sex: string | null;
+  birth_date: string | null; // yyyy-mm-dd
+  team_name: string | null;
+  timezone: string | null;
+  avatar_path: string | null;
+  role: string | null;
+};
 
-export default async function PerfilPage() {
-  const supabase = await createClient();
-  const { data, error } = await supabase.auth.getUser();
+export default function PerfilPage() {
+  const router = useRouter();
+  const supabase = createClient();
 
-  if (error || !data?.user) redirect("/login");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [changingPass, setChangingPass] = useState(false);
 
-  // Opcional: lê role só pra mostrar/ajustar links
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role, full_name")
-    .eq("id", data.user.id)
-    .single();
+  const [msg, setMsg] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [email, setEmail] = useState<string>("");
 
-  const role = profile?.role ?? "athlete";
+  // Campos do perfil
+  const [fullName, setFullName] = useState("");
+  const [sex, setSex] = useState("");
+  const [birthDate, setBirthDate] = useState("");
+  const [teamName, setTeamName] = useState("");
+  const [timezone, setTimezone] = useState("");
+  const [role, setRole] = useState<string | null>(null);
+
+  // Foto
+  const [avatarPath, setAvatarPath] = useState<string | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+
+  // Senha
+  const [newPassword, setNewPassword] = useState("");
+  const [newPassword2, setNewPassword2] = useState("");
+
+  async function loadProfile() {
+    setLoading(true);
+    setMsg(null);
+
+    const { data: auth, error: authErr } = await supabase.auth.getUser();
+    if (authErr || !auth?.user) {
+      router.push("/login");
+      router.refresh();
+      return;
+    }
+
+    setUserId(auth.user.id);
+    setEmail(auth.user.email ?? "");
+
+    const { data: p, error } = await supabase
+      .from("profiles")
+      .select("id, full_name, sex, birth_date, team_name, timezone, avatar_path, role")
+      .eq("id", auth.user.id)
+      .single();
+
+    if (error) {
+      setMsg("Erro ao carregar perfil: " + error.message);
+      setLoading(false);
+      return;
+    }
+
+    const profile = p as Profile;
+
+    setRole(profile.role);
+    setFullName(profile.full_name ?? "");
+    setSex(profile.sex ?? "");
+    setBirthDate(profile.birth_date ?? "");
+    setTeamName(profile.team_name ?? "");
+    setTimezone(profile.timezone ?? "");
+    setAvatarPath(profile.avatar_path);
+
+    // Preview da foto (bucket privado -> signed url)
+    if (profile.avatar_path) {
+      const { data: signed, error: signedErr } = await supabase.storage
+        .from("avatars")
+        .createSignedUrl(profile.avatar_path, 60 * 10);
+
+      if (!signedErr) setAvatarUrl(signed?.signedUrl ?? null);
+      else setAvatarUrl(null);
+    } else {
+      setAvatarUrl(null);
+    }
+
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    loadProfile();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function saveProfile() {
+    if (!userId) return;
+
+    setSaving(true);
+    setMsg(null);
+
+    try {
+      const { error } = await supabase
+        .from("profiles")
+        .update({
+          full_name: fullName.trim() ? fullName.trim() : null,
+          sex: sex || null,
+          birth_date: birthDate || null,
+          team_name: teamName.trim() ? teamName.trim() : null,
+          timezone: timezone.trim() ? timezone.trim() : null,
+        })
+        .eq("id", userId);
+
+      if (error) {
+        setMsg("Erro ao salvar: " + error.message);
+        return;
+      }
+
+      setMsg("Perfil salvo com sucesso.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function getFileExt(name: string) {
+    const parts = name.split(".");
+    if (parts.length < 2) return "jpg";
+    const ext = parts[parts.length - 1].toLowerCase();
+    return ext || "jpg";
+  }
+
+  async function uploadAvatar(file: File) {
+    if (!userId) return;
+
+    setUploading(true);
+    setMsg(null);
+
+    try {
+      const ext = getFileExt(file.name);
+      const path = `${userId}/avatar.${ext}`;
+
+      const { error: upErr } = await supabase.storage.from("avatars").upload(path, file, {
+        upsert: true,
+        contentType: file.type || "image/jpeg",
+      });
+
+      if (upErr) {
+        setMsg("Erro ao enviar foto: " + upErr.message);
+        return;
+      }
+
+      const { error: profErr } = await supabase
+        .from("profiles")
+        .update({ avatar_path: path })
+        .eq("id", userId);
+
+      if (profErr) {
+        setMsg("Foto enviada, mas falha ao salvar no perfil: " + profErr.message);
+        return;
+      }
+
+      setAvatarPath(path);
+
+      const { data: signed, error: signedErr } = await supabase.storage
+        .from("avatars")
+        .createSignedUrl(path, 60 * 10);
+
+      if (signedErr) {
+        setMsg("Foto enviada, mas falha ao gerar preview: " + signedErr.message);
+        return;
+      }
+
+      setAvatarUrl(signed?.signedUrl ?? null);
+      setMsg("Foto atualizada com sucesso.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function changePassword() {
+    setChangingPass(true);
+    setMsg(null);
+
+    try {
+      if (!newPassword || newPassword.length < 6) {
+        setMsg("A nova senha deve ter pelo menos 6 caracteres.");
+        return;
+      }
+      if (newPassword !== newPassword2) {
+        setMsg("As senhas não coincidem.");
+        return;
+      }
+
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+
+      if (error) {
+        setMsg("Erro ao trocar senha: " + error.message);
+        return;
+      }
+
+      setNewPassword("");
+      setNewPassword2("");
+      setMsg("Senha atualizada com sucesso.");
+    } finally {
+      setChangingPass(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div style={{ padding: 16, fontFamily: "system-ui" }}>
+        Carregando perfil…
+      </div>
+    );
+  }
+
+  const isCoachOrAdmin = role === "coach" || role === "admin";
 
   return (
     <div style={{ padding: 16, fontFamily: "system-ui", maxWidth: 900, margin: "0 auto" }}>
@@ -28,19 +233,154 @@ export default async function PerfilPage() {
           <Link href="/inicio">Início</Link>
           <Link href="/bem-estar">Bem-estar</Link>
           <Link href="/treino">Treino</Link>
-          {role === "coach" || role === "admin" ? <Link href="/dashboard">Dashboard</Link> : null}
+          {isCoachOrAdmin ? <Link href="/dashboard">Dashboard</Link> : null}
         </nav>
       </header>
 
-      <p style={{ opacity: 0.8, marginTop: 12 }}>
-        Logado como: <b>{data.user.email}</b>
+      <p style={{ opacity: 0.8, marginTop: 10 }}>
+        Logado como: <b>{email || "sem email"}</b>
       </p>
 
-      <div style={{ marginTop: 16, padding: 14, border: "1px solid #333", borderRadius: 12 }}>
-        <p style={{ marginTop: 0 }}>
-          Em construção: aqui vamos colocar <b>nome</b>, <b>sexo</b>, <b>data de nascimento</b>, <b>equipe</b>,{" "}
-          <b>timezone</b>, <b>foto</b> e <b>trocar senha</b>.
-        </p>
+      {msg && (
+        <div style={{ marginTop: 12, padding: 12, borderRadius: 10, border: "1px solid #333" }}>
+          {msg}
+        </div>
+      )}
+
+      {/* FOTO */}
+      <section style={{ marginTop: 18, padding: 14, border: "1px solid #333", borderRadius: 12 }}>
+        <h2 style={{ marginTop: 0 }}>Foto de perfil</h2>
+
+        <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
+          <div
+            style={{
+              width: 90,
+              height: 90,
+              borderRadius: "50%",
+              overflow: "hidden",
+              border: "1px solid #444",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            {avatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={avatarUrl}
+                alt="avatar"
+                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+              />
+            ) : (
+              <span style={{ opacity: 0.7, fontSize: 12 }}>Sem foto</span>
+            )}
+          </div>
+
+          <div style={{ display: "grid", gap: 8 }}>
+            <input
+              type="file"
+              accept="image/*"
+              disabled={uploading}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) uploadAvatar(file);
+              }}
+            />
+            <div style={{ opacity: 0.8, fontSize: 12 }}>
+              {uploading
+                ? "Enviando..."
+                : avatarPath
+                ? "Enviar outra imagem substitui a atual."
+                : "Escolha uma imagem (JPG/PNG)."}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* DADOS */}
+      <section style={{ marginTop: 18, padding: 14, border: "1px solid #333", borderRadius: 12 }}>
+        <h2 style={{ marginTop: 0 }}>Dados</h2>
+
+        <div style={{ display: "grid", gap: 12 }}>
+          <label style={{ display: "grid", gap: 6 }}>
+            <span>Nome</span>
+            <input value={fullName} onChange={(e) => setFullName(e.target.value)} style={{ padding: 10 }} />
+          </label>
+
+          <label style={{ display: "grid", gap: 6 }}>
+            <span>Sexo</span>
+            <select value={sex} onChange={(e) => setSex(e.target.value)} style={{ padding: 10 }}>
+              <option value="">Selecionar</option>
+              <option value="male">Masculino</option>
+              <option value="female">Feminino</option>
+              <option value="other">Outro</option>
+              <option value="prefer_not_say">Prefiro não informar</option>
+            </select>
+          </label>
+
+          <label style={{ display: "grid", gap: 6 }}>
+            <span>Data de nascimento</span>
+            <input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} style={{ padding: 10 }} />
+          </label>
+
+          <label style={{ display: "grid", gap: 6 }}>
+            <span>Equipe</span>
+            <input value={teamName} onChange={(e) => setTeamName(e.target.value)} style={{ padding: 10 }} />
+          </label>
+
+          <label style={{ display: "grid", gap: 6 }}>
+            <span>Timezone (IANA)</span>
+            <input
+              value={timezone}
+              onChange={(e) => setTimezone(e.target.value)}
+              placeholder="Ex.: America/Fortaleza"
+              style={{ padding: 10 }}
+            />
+            <small style={{ opacity: 0.75 }}>
+              Use formato IANA (ex.: America/Fortaleza, Europe/Lisbon).
+            </small>
+          </label>
+        </div>
+      </section>
+
+      {/* SENHA */}
+      <section style={{ marginTop: 18, padding: 14, border: "1px solid #333", borderRadius: 12 }}>
+        <h2 style={{ marginTop: 0 }}>Segurança</h2>
+
+        <div style={{ display: "grid", gap: 10, maxWidth: 420 }}>
+          <label style={{ display: "grid", gap: 6 }}>
+            <span>Nova senha</span>
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="mínimo 6 caracteres"
+              style={{ padding: 10 }}
+            />
+          </label>
+
+          <label style={{ display: "grid", gap: 6 }}>
+            <span>Confirmar nova senha</span>
+            <input
+              type="password"
+              value={newPassword2}
+              onChange={(e) => setNewPassword2(e.target.value)}
+              placeholder="repita a senha"
+              style={{ padding: 10 }}
+            />
+          </label>
+
+          <button onClick={changePassword} disabled={changingPass} style={{ padding: "10px 14px" }}>
+            {changingPass ? "Atualizando..." : "Trocar senha"}
+          </button>
+        </div>
+      </section>
+
+      {/* BOTÃO SALVAR (rodapé) */}
+      <div style={{ marginTop: 22, display: "flex", justifyContent: "flex-end" }}>
+        <button onClick={saveProfile} disabled={saving} style={{ padding: "12px 16px" }}>
+          {saving ? "Salvando..." : "Salvar alterações"}
+        </button>
       </div>
     </div>
   );
