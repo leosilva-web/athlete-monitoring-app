@@ -30,6 +30,13 @@ function fmtTime(hhMmSs: string) {
   return (hhMmSs || "").slice(0, 5);
 }
 
+function mapSexoToPt(value: string | null | undefined) {
+  const v = (value || "").toLowerCase().trim();
+  if (v === "male") return "masculino";
+  if (v === "female") return "feminino";
+  return value || "";
+}
+
 export default async function BemEstarPage() {
   const supabase = await createClient();
 
@@ -43,60 +50,105 @@ export default async function BemEstarPage() {
     );
   }
 
-  // ✅ Tentativa 1: procurar atleta pelo owner_id (modelo comum com RLS)
-  const { data: athleteByOwner, error: e1 } = await supabase
+  const userId = userData.user.id;
+
+  // 1) Tenta achar o atleta já existente (owner_id -> padrão)
+  const { data: byOwner } = await supabase
     .from("athletes")
     .select("id, owner_id, name, sexo, timezone")
-    .eq("owner_id", userData.user.id)
+    .eq("owner_id", userId)
     .maybeSingle();
 
-  // ✅ Tentativa 2 (fallback): alguns projetos usam athletes.id = auth.uid()
-  const { data: athleteById, error: e2 } = athleteByOwner
-    ? { data: null, error: null }
+  // 2) Fallback (alguns setups usam athletes.id = auth.uid())
+  const { data: byId } = byOwner
+    ? { data: null as any }
     : await supabase
         .from("athletes")
         .select("id, owner_id, name, sexo, timezone")
-        .eq("id", userData.user.id)
+        .eq("id", userId)
         .maybeSingle();
 
-  const athlete = athleteByOwner ?? athleteById;
-  const athleteError = e1 ?? e2;
+  let athlete = byOwner ?? byId;
+
+  // 3) Se NÃO existir atleta, tenta criar automaticamente usando dados do perfil
+  if (!athlete) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("full_name, sex, timezone")
+      .eq("id", userId)
+      .maybeSingle();
+
+    const fullName = (profile?.full_name || "").trim();
+    const sexoPt = mapSexoToPt(profile?.sex || "");
+    const tz = (profile?.timezone || "").trim();
+
+    // Se o perfil ainda não estiver completo, manda pro /perfil preencher (coerente com “tudo obrigatório”)
+    if (!fullName || !sexoPt || !tz) {
+      return (
+        <div style={{ maxWidth: 720, margin: "40px auto", padding: 16, fontFamily: "system-ui" }}>
+          <h2 style={{ marginTop: 0 }}>Antes do Bem-estar…</h2>
+          <p style={{ opacity: 0.85 }}>
+            Seu perfil precisa estar completo para registrar o bem-estar: <b>Nome</b>, <b>Sexo</b> e <b>Fuso horário</b>.
+          </p>
+          <p style={{ marginTop: 12 }}>
+            <Link href="/perfil">Ir para Perfil</Link>
+          </p>
+          <p style={{ marginTop: 12 }}>
+            <Link href="/inicio">Voltar</Link>
+          </p>
+        </div>
+      );
+    }
+
+    // Cria a linha em athletes
+    // (usando id = userId para bater com o ADR “athlete_id = auth.users.id”)
+    const { error: insErr } = await supabase.from("athletes").insert({
+      id: userId,
+      owner_id: userId,
+      name: fullName,
+      sexo: sexoPt,
+      timezone: tz,
+    });
+
+    if (insErr) {
+      return (
+        <div style={{ padding: 24 }}>
+          <h2>Não foi possível criar seu registro de atleta.</h2>
+          <p style={{ marginTop: 12, opacity: 0.85 }}>
+            Erro: <b>{insErr.message}</b>
+          </p>
+          <p style={{ marginTop: 16 }}>
+            <Link href="/perfil">Ir para Perfil</Link>
+          </p>
+        </div>
+      );
+    }
+
+    // Recarrega o atleta recém-criado
+    const { data: created } = await supabase
+      .from("athletes")
+      .select("id, owner_id, name, sexo, timezone")
+      .eq("id", userId)
+      .maybeSingle();
+
+    athlete = created ?? null;
+  }
 
   if (!athlete) {
     return (
       <div style={{ padding: 24 }}>
         <h2>Atleta não encontrado (ou sem permissão).</h2>
         <p style={{ marginTop: 12 }}>
-          Isso normalmente significa que ainda não existe uma linha em <code>athletes</code> vinculada a este usuário,
-          ou o RLS bloqueou a leitura.
+          Mesmo após tentar criar automaticamente, não foi possível localizar seu atleta.
         </p>
-
-        <pre style={{ marginTop: 16, fontSize: 12, whiteSpace: "pre-wrap" }}>
-          {JSON.stringify(
-            {
-              auth_user_id: userData.user.id,
-              try_owner_id: athleteByOwner ? "FOUND" : "NOT_FOUND",
-              try_id: athleteById ? "FOUND" : "NOT_FOUND",
-              error: athleteError
-                ? {
-                    message: athleteError.message ?? null,
-                    details: (athleteError as any).details ?? null,
-                    hint: (athleteError as any).hint ?? null,
-                    code: (athleteError as any).code ?? null,
-                  }
-                : null,
-            },
-            null,
-            2
-          )}
-        </pre>
-
         <p style={{ marginTop: 16 }}>
           <Link href="/inicio">Voltar</Link>
         </p>
       </div>
     );
   }
+
+  const athleteSexoPt = mapSexoToPt(athlete.sexo);
 
   const { data: bemEstar, error: beError } = await supabase
     .from("checkins_bem_estar")
@@ -109,7 +161,6 @@ export default async function BemEstarPage() {
 
   return (
     <div style={{ maxWidth: 900, margin: "40px auto", padding: 16, fontFamily: "system-ui" }}>
-      {/* Header (padrão do coach, mas sem dashboard) */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
         <div>
           <h2 style={{ margin: 0 }}>Check-in — Bem-estar</h2>
@@ -117,7 +168,7 @@ export default async function BemEstarPage() {
             Atleta: <b>{athlete.name}</b>
           </div>
           <div style={{ opacity: 0.7, marginTop: 4, fontSize: 13 }}>
-            Sexo: <b>{athlete.sexo}</b> · Fuso: <b>{athlete.timezone}</b>
+            Sexo: <b>{athleteSexoPt}</b> · Fuso: <b>{athlete.timezone}</b>
           </div>
         </div>
 
@@ -137,8 +188,7 @@ export default async function BemEstarPage() {
 
       <hr style={{ margin: "16px 0", opacity: 0.2 }} />
 
-      {/* Formulário (o MESMO do coach) */}
-      <CheckInBemEstarForm athleteId={athlete.id} athleteSexo={athlete.sexo} />
+      <CheckInBemEstarForm athleteId={athlete.id} athleteSexo={athleteSexoPt} />
 
       <hr style={{ margin: "20px 0", opacity: 0.2 }} />
 
