@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import CheckInBemEstarForm from "@/app/dashboard/athletes/[id]/measurements/CheckInBemEstarForm";
 import SignOutButton from "@/app/dashboard/SignOutButton";
+import DeleteCheckinButton from "./DeleteCheckinButton";
 
 export const dynamic = "force-dynamic";
 
@@ -51,6 +52,16 @@ function formatSupabaseError(err: any) {
   );
 }
 
+function todayInTimeZone(timezone: string) {
+  // YYYY-MM-DD no fuso do atleta
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone || "UTC",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
 export default async function BemEstarPage() {
   const supabase = await createClient();
 
@@ -65,6 +76,16 @@ export default async function BemEstarPage() {
   }
 
   const userId = userData.user.id;
+
+  // ✅ Pega role do usuário logado (pra regra de exclusão)
+  const { data: profileRole } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", userId)
+    .maybeSingle();
+
+  const role = (profileRole?.role ?? "").toString();
+  const isCoachOrAdmin = role === "coach" || role === "admin";
 
   // 1) Tenta achar o atleta já existente por owner_id
   const { data: athleteByOwner, error: e1 } = await supabase
@@ -85,7 +106,6 @@ export default async function BemEstarPage() {
   let athlete = athleteByOwner ?? athleteById;
 
   // 3) Se NÃO existir atleta, cria automaticamente usando dados do profile.
-  //    (Aqui usamos RETURNING via .select().single() para pegar o id real gerado no DB, se houver.)
   if (!athlete) {
     const { data: profile, error: pErr } = await supabase
       .from("profiles")
@@ -97,7 +117,9 @@ export default async function BemEstarPage() {
       return (
         <div style={{ padding: 24 }}>
           <h2>Erro ao ler perfil.</h2>
-          <pre style={{ marginTop: 12, fontSize: 12, whiteSpace: "pre-wrap" }}>{formatSupabaseError(pErr)}</pre>
+          <pre style={{ marginTop: 12, fontSize: 12, whiteSpace: "pre-wrap" }}>
+            {formatSupabaseError(pErr)}
+          </pre>
           <p style={{ marginTop: 16 }}>
             <Link href="/perfil">Ir para Perfil</Link>
           </p>
@@ -109,7 +131,7 @@ export default async function BemEstarPage() {
     const sexoPt = mapSexoToPt(profile?.sex || "");
     const tz = (profile?.timezone || "").trim();
 
-    // Perfil incompleto -> manda preencher (coerente com “tudo obrigatório”)
+    // Perfil incompleto -> manda preencher
     if (!fullName || !sexoPt || !tz) {
       return (
         <div style={{ maxWidth: 720, margin: "40px auto", padding: 16, fontFamily: "system-ui" }}>
@@ -127,11 +149,9 @@ export default async function BemEstarPage() {
       );
     }
 
-    // ✅ Cria e já pega o registro retornado (id real do DB)
     const { data: createdAthlete, error: insErr } = await supabase
       .from("athletes")
       .insert({
-        // Se o DB permitir setar id = auth.uid(), ótimo. Se não permitir, ele gera e devolve no RETURNING.
         id: userId,
         owner_id: userId,
         name: fullName,
@@ -148,7 +168,9 @@ export default async function BemEstarPage() {
           <p style={{ marginTop: 10, opacity: 0.85 }}>
             Isso normalmente é <b>RLS</b> ou <b>constraint</b> no banco (coluna obrigatória, tipo diferente etc.).
           </p>
-          <pre style={{ marginTop: 12, fontSize: 12, whiteSpace: "pre-wrap" }}>{formatSupabaseError(insErr)}</pre>
+          <pre style={{ marginTop: 12, fontSize: 12, whiteSpace: "pre-wrap" }}>
+            {formatSupabaseError(insErr)}
+          </pre>
           <p style={{ marginTop: 16 }}>
             <Link href="/perfil">Ir para Perfil</Link>
           </p>
@@ -187,6 +209,8 @@ export default async function BemEstarPage() {
   }
 
   const athleteSexoPt = mapSexoToPt(athlete.sexo);
+  const tz = (athlete.timezone || "UTC").toString();
+  const todayLocal = todayInTimeZone(tz);
 
   const { data: bemEstar, error: beError } = await supabase
     .from("checkins_bem_estar")
@@ -249,32 +273,48 @@ export default async function BemEstarPage() {
                 <th style={{ padding: "8px 6px" }}>Humor</th>
                 <th style={{ padding: "8px 6px" }}>Ciclo</th>
                 <th style={{ padding: "8px 6px" }}>Dor (ciclo)</th>
+                <th style={{ padding: "8px 6px" }}>Ações</th>
               </tr>
             </thead>
+
             <tbody>
-              {(bemEstar as BemEstarRow[] | null | undefined)?.map((r) => (
-                <tr key={r.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-                  <td style={{ padding: "8px 6px" }}>{fmtDate(r.data_local)}</td>
-                  <td style={{ padding: "8px 6px" }}>{fmtTime(r.hora_local)}</td>
-                  <td style={{ padding: "8px 6px" }}>{r.peso_kg}</td>
-                  <td style={{ padding: "8px 6px" }}>{r.fadiga}</td>
-                  <td style={{ padding: "8px 6px" }}>{r.qualidade_sono}</td>
-                  <td style={{ padding: "8px 6px" }}>{r.dor_muscular}</td>
-                  <td style={{ padding: "8px 6px" }}>{r.nivel_estresse}</td>
-                  <td style={{ padding: "8px 6px" }}>{r.humor}</td>
-                  <td style={{ padding: "8px 6px" }}>{r.fase_ciclo_menstrual ?? "-"}</td>
-                  <td style={{ padding: "8px 6px" }}>{r.intensidade_dor ?? "-"}</td>
-                </tr>
-              ))}
+              {(bemEstar as BemEstarRow[] | null | undefined)?.map((r) => {
+                const athleteCanDeleteToday = r.data_local === todayLocal;
+                const canShowDelete = isCoachOrAdmin || athleteCanDeleteToday;
+
+                return (
+                  <tr key={r.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+                    <td style={{ padding: "8px 6px" }}>{fmtDate(r.data_local)}</td>
+                    <td style={{ padding: "8px 6px" }}>{fmtTime(r.hora_local)}</td>
+                    <td style={{ padding: "8px 6px" }}>{r.peso_kg}</td>
+                    <td style={{ padding: "8px 6px" }}>{r.fadiga}</td>
+                    <td style={{ padding: "8px 6px" }}>{r.qualidade_sono}</td>
+                    <td style={{ padding: "8px 6px" }}>{r.dor_muscular}</td>
+                    <td style={{ padding: "8px 6px" }}>{r.nivel_estresse}</td>
+                    <td style={{ padding: "8px 6px" }}>{r.humor}</td>
+                    <td style={{ padding: "8px 6px" }}>{r.fase_ciclo_menstrual ?? "-"}</td>
+                    <td style={{ padding: "8px 6px" }}>{r.intensidade_dor ?? "-"}</td>
+
+                    <td style={{ padding: "8px 6px" }}>
+                      {canShowDelete ? <DeleteCheckinButton checkinId={r.id} /> : null}
+                    </td>
+                  </tr>
+                );
+              })}
+
               {(bemEstar?.length ?? 0) === 0 && (
                 <tr>
-                  <td colSpan={10} style={{ padding: "10px 6px", opacity: 0.7 }}>
+                  <td colSpan={11} style={{ padding: "10px 6px", opacity: 0.7 }}>
                     Nenhum check-in de bem-estar ainda.
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
+
+          <div style={{ marginTop: 10, opacity: 0.75, fontSize: 12 }}>
+            Regra de exclusão: atleta só pode excluir registros de <b>hoje</b> no próprio fuso ({tz}). Coach/Admin pode excluir qualquer dia.
+          </div>
         </div>
       )}
     </div>
