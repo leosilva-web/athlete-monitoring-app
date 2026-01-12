@@ -1,19 +1,27 @@
+import { redirect } from "next/navigation";
 import Link from "next/link";
+import { createClient } from "@/lib/supabase/server";
 
-export default function TreinoPage() {
+export default async function TreinoPage() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  if (profile?.role === "coach" || profile?.role === "admin") redirect("/dashboard");
+
   return (
-    <div style={{ padding: 16, fontFamily: "system-ui", maxWidth: 900, margin: "0 auto" }}>
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ margin: 0 }}>Sessão de Treino</h1>
-        <nav style={{ display: "flex", gap: 12 }}>
-          <Link href="/inicio">Início</Link>
-          <Link href="/perfil">Perfil</Link>
-        </nav>
-      </header>
-
-      <p style={{ opacity: 0.8, marginTop: 10 }}>
-        Em construção: registro da sessão de treino.
-      </p>
+    <div style={{ padding: 16, fontFamily: "system-ui", maxWidth: 900 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <h1>Sessão de Treino</h1>
+        <Link href="/inicio">Voltar</Link>
+      </div>
+      <p>Em construção (próximo passo: registro de treino com timezone).</p>
     </div>
   );
 }

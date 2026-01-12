@@ -1,49 +1,65 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import SignOutButton from "@/app/dashboard/SignOutButton";
 
-export default function InicioAtletaPage() {
+export default async function InicioPage() {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) redirect("/login");
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role, full_name")
+    .eq("id", user.id)
+    .single();
+
+  // Se for coach/admin, o "home" dele é o dashboard
+  if (profile?.role === "coach" || profile?.role === "admin") {
+    redirect("/dashboard");
+  }
+
   return (
-    <div style={{ padding: 16, fontFamily: "system-ui", maxWidth: 900, margin: "0 auto" }}>
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ margin: 0 }}>Área do Atleta</h1>
-        <nav style={{ display: "flex", gap: 12 }}>
+    <div style={{ padding: 16, fontFamily: "system-ui", maxWidth: 900 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+        <h1>Início</h1>
+        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
           <Link href="/perfil">Perfil</Link>
-          <Link href="/login">Login</Link>
-        </nav>
-      </header>
+          <SignOutButton />
+        </div>
+      </div>
 
-      <p style={{ opacity: 0.8, marginTop: 10 }}>
-        Escolha o que deseja preencher hoje:
-      </p>
+      <p style={{ opacity: 0.85 }}>Escolha o que você quer registrar hoje.</p>
 
-      <div style={{ display: "grid", gap: 12, marginTop: 16 }}>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 16 }}>
         <Link
           href="/bem-estar"
           style={{
             padding: 14,
-            border: "1px solid rgba(255,255,255,0.15)",
+            border: "1px solid #333",
             borderRadius: 10,
-            textDecoration: "none",
+            minWidth: 220,
+            textAlign: "center",
           }}
         >
-          <b>Bem-estar</b>
-          <div style={{ opacity: 0.8, marginTop: 6 }}>
-            Sono, humor, dor, fadiga, prontidão…
-          </div>
+          Bem-estar
         </Link>
 
         <Link
           href="/treino"
           style={{
             padding: 14,
-            border: "1px solid rgba(255,255,255,0.15)",
+            border: "1px solid #333",
             borderRadius: 10,
-            textDecoration: "none",
+            minWidth: 220,
+            textAlign: "center",
           }}
         >
-          <b>Sessão de Treino</b>
-          <div style={{ opacity: 0.8, marginTop: 6 }}>
-            Registro da sessão: carga, duração, RPE, notas…
-          </div>
+          Sessão de Treino
         </Link>
       </div>
     </div>
