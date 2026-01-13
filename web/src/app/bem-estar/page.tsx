@@ -277,7 +277,7 @@ export default async function BemEstarPage() {
                   <td style={{ padding: "8px 6px" }}>{r.fase_ciclo_menstrual ?? "-"}</td>
                   <td style={{ padding: "8px 6px" }}>{r.intensidade_dor ?? "-"}</td>
                   <td style={{ padding: "8px 6px" }}>
-                    <DeleteCheckinButton id={r.id} />
+                    <DeleteCheckinButton checkinId={r.id} />
                   </td>
                 </tr>
               ))}
