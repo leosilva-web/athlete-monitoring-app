@@ -52,10 +52,10 @@ function formatSupabaseError(err: any) {
   );
 }
 
-function todayInTimeZone(timezone: string) {
-  // YYYY-MM-DD no fuso do atleta
+function todayLocalDate(timezone: string) {
+  // en-CA => YYYY-MM-DD
   return new Intl.DateTimeFormat("en-CA", {
-    timeZone: timezone || "UTC",
+    timeZone: timezone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -76,16 +76,6 @@ export default async function BemEstarPage() {
   }
 
   const userId = userData.user.id;
-
-  // ✅ Pega role do usuário logado (pra regra de exclusão)
-  const { data: profileRole } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", userId)
-    .maybeSingle();
-
-  const role = (profileRole?.role ?? "").toString();
-  const isCoachOrAdmin = role === "coach" || role === "admin";
 
   // 1) Tenta achar o atleta já existente por owner_id
   const { data: athleteByOwner, error: e1 } = await supabase
@@ -166,7 +156,7 @@ export default async function BemEstarPage() {
         <div style={{ padding: 24 }}>
           <h2>Não foi possível criar seu registro de atleta.</h2>
           <p style={{ marginTop: 10, opacity: 0.85 }}>
-            Isso normalmente é <b>RLS</b> ou <b>constraint</b> no banco (coluna obrigatória, tipo diferente etc.).
+            Isso normalmente é <b>RLS</b> ou <b>constraint</b> no banco.
           </p>
           <pre style={{ marginTop: 12, fontSize: 12, whiteSpace: "pre-wrap" }}>
             {formatSupabaseError(insErr)}
@@ -185,9 +175,7 @@ export default async function BemEstarPage() {
     return (
       <div style={{ padding: 24 }}>
         <h2>Atleta não encontrado (ou sem permissão).</h2>
-        <p style={{ marginTop: 12 }}>
-          Mesmo após tentar criar automaticamente, não foi possível localizar seu atleta.
-        </p>
+        <p style={{ marginTop: 12 }}>Mesmo após tentar criar automaticamente, não foi possível localizar seu atleta.</p>
         <pre style={{ marginTop: 12, fontSize: 12, whiteSpace: "pre-wrap" }}>
           {JSON.stringify(
             {
@@ -209,17 +197,18 @@ export default async function BemEstarPage() {
   }
 
   const athleteSexoPt = mapSexoToPt(athlete.sexo);
-  const tz = (athlete.timezone || "UTC").toString();
-  const todayLocal = todayInTimeZone(tz);
+  const hojeLocal = todayLocalDate(athlete.timezone);
 
+  // ✅ ATLETA SÓ VÊ HOJE
   const { data: bemEstar, error: beError } = await supabase
     .from("checkins_bem_estar")
     .select(
       "id, data_local, hora_local, peso_kg, fadiga, qualidade_sono, dor_muscular, nivel_estresse, humor, fase_ciclo_menstrual, intensidade_dor, created_at"
     )
     .eq("athlete_id", athlete.id)
+    .eq("data_local", hojeLocal)
     .order("created_at", { ascending: false })
-    .limit(15);
+    .limit(5);
 
   return (
     <div style={{ maxWidth: 900, margin: "40px auto", padding: 16, fontFamily: "system-ui" }}>
@@ -230,20 +219,17 @@ export default async function BemEstarPage() {
             Atleta: <b>{athlete.name}</b>
           </div>
           <div style={{ opacity: 0.7, marginTop: 4, fontSize: 13 }}>
-            Sexo: <b>{athleteSexoPt}</b> · Fuso: <b>{athlete.timezone}</b>
+            Sexo: <b>{athleteSexoPt}</b> · Fuso: <b>{athlete.timezone}</b> · Hoje: <b>{fmtDate(hojeLocal)}</b>
+          </div>
+          <div style={{ opacity: 0.75, marginTop: 6, fontSize: 12 }}>
+            Por regra do app, o atleta só enxerga e gerencia os dados do dia atual.
           </div>
         </div>
 
         <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-          <Link href="/inicio" style={{ opacity: 0.9 }}>
-            Início
-          </Link>
-          <Link href="/treino" style={{ opacity: 0.9 }}>
-            Treino
-          </Link>
-          <Link href="/perfil" style={{ opacity: 0.9 }}>
-            Perfil
-          </Link>
+          <Link href="/inicio" style={{ opacity: 0.9 }}>Início</Link>
+          <Link href="/treino" style={{ opacity: 0.9 }}>Treino</Link>
+          <Link href="/perfil" style={{ opacity: 0.9 }}>Perfil</Link>
           <SignOutButton />
         </div>
       </div>
@@ -254,7 +240,7 @@ export default async function BemEstarPage() {
 
       <hr style={{ margin: "20px 0", opacity: 0.2 }} />
 
-      <h3 style={{ marginTop: 0 }}>Histórico — Bem-estar</h3>
+      <h3 style={{ marginTop: 0 }}>Histórico — Bem-estar (apenas hoje)</h3>
       {beError ? (
         <p>Erro ao carregar bem-estar: {beError.message}</p>
       ) : (
@@ -278,43 +264,33 @@ export default async function BemEstarPage() {
             </thead>
 
             <tbody>
-              {(bemEstar as BemEstarRow[] | null | undefined)?.map((r) => {
-                const athleteCanDeleteToday = r.data_local === todayLocal;
-                const canShowDelete = isCoachOrAdmin || athleteCanDeleteToday;
-
-                return (
-                  <tr key={r.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-                    <td style={{ padding: "8px 6px" }}>{fmtDate(r.data_local)}</td>
-                    <td style={{ padding: "8px 6px" }}>{fmtTime(r.hora_local)}</td>
-                    <td style={{ padding: "8px 6px" }}>{r.peso_kg}</td>
-                    <td style={{ padding: "8px 6px" }}>{r.fadiga}</td>
-                    <td style={{ padding: "8px 6px" }}>{r.qualidade_sono}</td>
-                    <td style={{ padding: "8px 6px" }}>{r.dor_muscular}</td>
-                    <td style={{ padding: "8px 6px" }}>{r.nivel_estresse}</td>
-                    <td style={{ padding: "8px 6px" }}>{r.humor}</td>
-                    <td style={{ padding: "8px 6px" }}>{r.fase_ciclo_menstrual ?? "-"}</td>
-                    <td style={{ padding: "8px 6px" }}>{r.intensidade_dor ?? "-"}</td>
-
-                    <td style={{ padding: "8px 6px" }}>
-                      {canShowDelete ? <DeleteCheckinButton checkinId={r.id} /> : null}
-                    </td>
-                  </tr>
-                );
-              })}
+              {(bemEstar as BemEstarRow[] | null | undefined)?.map((r) => (
+                <tr key={r.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+                  <td style={{ padding: "8px 6px" }}>{fmtDate(r.data_local)}</td>
+                  <td style={{ padding: "8px 6px" }}>{fmtTime(r.hora_local)}</td>
+                  <td style={{ padding: "8px 6px" }}>{r.peso_kg}</td>
+                  <td style={{ padding: "8px 6px" }}>{r.fadiga}</td>
+                  <td style={{ padding: "8px 6px" }}>{r.qualidade_sono}</td>
+                  <td style={{ padding: "8px 6px" }}>{r.dor_muscular}</td>
+                  <td style={{ padding: "8px 6px" }}>{r.nivel_estresse}</td>
+                  <td style={{ padding: "8px 6px" }}>{r.humor}</td>
+                  <td style={{ padding: "8px 6px" }}>{r.fase_ciclo_menstrual ?? "-"}</td>
+                  <td style={{ padding: "8px 6px" }}>{r.intensidade_dor ?? "-"}</td>
+                  <td style={{ padding: "8px 6px" }}>
+                    <DeleteCheckinButton id={r.id} />
+                  </td>
+                </tr>
+              ))}
 
               {(bemEstar?.length ?? 0) === 0 && (
                 <tr>
                   <td colSpan={11} style={{ padding: "10px 6px", opacity: 0.7 }}>
-                    Nenhum check-in de bem-estar ainda.
+                    Nenhum check-in de bem-estar ainda para hoje.
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
-
-          <div style={{ marginTop: 10, opacity: 0.75, fontSize: 12 }}>
-            Regra de exclusão: atleta só pode excluir registros de <b>hoje</b> no próprio fuso ({tz}). Coach/Admin pode excluir qualquer dia.
-          </div>
         </div>
       )}
     </div>

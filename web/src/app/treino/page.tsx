@@ -47,6 +47,15 @@ function formatSupabaseError(err: any) {
   );
 }
 
+function todayLocalDate(timezone: string) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
 export default async function TreinoPage() {
   const supabase = await createClient();
 
@@ -106,21 +115,12 @@ export default async function TreinoPage() {
     const sexoPt = mapSexoToPt(profile?.sex || "");
     const tz = (profile?.timezone || "").trim();
 
-    // Perfil incompleto -> obriga completar
     if (!fullName || !sexoPt || !tz) {
       return (
-        <div
-          style={{
-            maxWidth: 720,
-            margin: "40px auto",
-            padding: 16,
-            fontFamily: "system-ui",
-          }}
-        >
+        <div style={{ maxWidth: 720, margin: "40px auto", padding: 16, fontFamily: "system-ui" }}>
           <h2 style={{ marginTop: 0 }}>Antes do Treino…</h2>
           <p style={{ opacity: 0.85 }}>
-            Seu perfil precisa estar completo para registrar treino: <b>Nome</b>,{" "}
-            <b>Sexo</b> e <b>Fuso horário</b>.
+            Seu perfil precisa estar completo para registrar treino: <b>Nome</b>, <b>Sexo</b> e <b>Fuso horário</b>.
           </p>
           <p style={{ marginTop: 12 }}>
             <Link href="/perfil">Ir para Perfil</Link>
@@ -189,23 +189,19 @@ export default async function TreinoPage() {
   }
 
   const athleteSexoPt = mapSexoToPt(athlete.sexo);
+  const hojeLocal = todayLocalDate(athlete.timezone);
 
-  // ✅ "Hoje" no fuso do atleta (YYYY-MM-DD)
-  const hojeLocal = new Date().toLocaleDateString("en-CA", {
-    timeZone: athlete.timezone,
-  });
-
+  // ✅ ATLETA SÓ VÊ HOJE
   const { data: sessoes, error: sError } = await supabase
     .from("sessoes_treino")
     .select("id, data_local, hora_local, tipo_treino, minutos, pse_sessao, created_at")
     .eq("athlete_id", athlete.id)
     .eq("data_local", hojeLocal)
     .order("created_at", { ascending: false })
-    .limit(25);
+    .limit(50);
 
   return (
     <div style={{ maxWidth: 900, margin: "40px auto", padding: 16, fontFamily: "system-ui" }}>
-      {/* Header padrão, sem dashboard */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
         <div>
           <h2 style={{ margin: 0 }}>Sessão de Treino</h2>
@@ -213,38 +209,35 @@ export default async function TreinoPage() {
             Atleta: <b>{athlete.name}</b>
           </div>
           <div style={{ opacity: 0.7, marginTop: 4, fontSize: 13 }}>
-            Sexo: <b>{athleteSexoPt}</b> · Fuso: <b>{athlete.timezone}</b>
+            Sexo: <b>{athleteSexoPt}</b> · Fuso: <b>{athlete.timezone}</b> · Hoje: <b>{fmtDate(hojeLocal)}</b>
+          </div>
+          <div style={{ opacity: 0.75, marginTop: 6, fontSize: 12 }}>
+            Por regra do app, o atleta só enxerga e gerencia os dados do dia atual.
           </div>
         </div>
 
         <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-          <Link href="/inicio" style={{ opacity: 0.9 }}>
-            Início
-          </Link>
-          <Link href="/bem-estar" style={{ opacity: 0.9 }}>
-            Bem-estar
-          </Link>
-          <Link href="/perfil" style={{ opacity: 0.9 }}>
-            Perfil
-          </Link>
+          <Link href="/inicio" style={{ opacity: 0.9 }}>Início</Link>
+          <Link href="/bem-estar" style={{ opacity: 0.9 }}>Bem-estar</Link>
+          <Link href="/perfil" style={{ opacity: 0.9 }}>Perfil</Link>
           <SignOutButton />
         </div>
       </div>
 
       <hr style={{ margin: "16px 0", opacity: 0.2 }} />
 
-      {/* Formulário (mesmo padrão do coach) */}
       <CheckInSessaoTreinoForm athleteId={athlete.id} />
 
       <hr style={{ margin: "20px 0", opacity: 0.2 }} />
 
-      <h3 style={{ marginTop: 0 }}>Histórico — Sessões de Treino (hoje)</h3>
+      <h3 style={{ marginTop: 0 }}>Histórico — Sessões de Treino (apenas hoje)</h3>
 
       {sError ? (
         <p>Erro ao carregar sessões: {sError.message}</p>
       ) : (
         <div style={{ overflowX: "auto" }}>
           <div style={{ opacity: 0.8, marginBottom: 8 }}>Total carregado: {sessoes?.length ?? 0}</div>
+
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ textAlign: "left", borderBottom: "1px solid rgba(255,255,255,0.15)" }}>
@@ -256,6 +249,7 @@ export default async function TreinoPage() {
                 <th style={{ padding: "8px 6px" }}>Ações</th>
               </tr>
             </thead>
+
             <tbody>
               {(sessoes as SessaoRow[] | null | undefined)?.map((r) => (
                 <tr key={r.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
