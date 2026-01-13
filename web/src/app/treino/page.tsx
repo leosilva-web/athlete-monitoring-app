@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import SignOutButton from "@/app/dashboard/SignOutButton";
 import CheckInSessaoTreinoForm from "@/app/dashboard/athletes/[id]/measurements/CheckInSessaoTreinoForm";
+import DeleteSessaoButton from "./DeleteSessaoButton";
 
 export const dynamic = "force-dynamic";
 
@@ -91,7 +92,9 @@ export default async function TreinoPage() {
       return (
         <div style={{ padding: 24 }}>
           <h2>Erro ao ler perfil.</h2>
-          <pre style={{ marginTop: 12, fontSize: 12, whiteSpace: "pre-wrap" }}>{formatSupabaseError(pErr)}</pre>
+          <pre style={{ marginTop: 12, fontSize: 12, whiteSpace: "pre-wrap" }}>
+            {formatSupabaseError(pErr)}
+          </pre>
           <p style={{ marginTop: 16 }}>
             <Link href="/perfil">Ir para Perfil</Link>
           </p>
@@ -103,13 +106,21 @@ export default async function TreinoPage() {
     const sexoPt = mapSexoToPt(profile?.sex || "");
     const tz = (profile?.timezone || "").trim();
 
-    // Perfil incompleto -> obriga completar (coerente com “tudo obrigatório”)
+    // Perfil incompleto -> obriga completar
     if (!fullName || !sexoPt || !tz) {
       return (
-        <div style={{ maxWidth: 720, margin: "40px auto", padding: 16, fontFamily: "system-ui" }}>
+        <div
+          style={{
+            maxWidth: 720,
+            margin: "40px auto",
+            padding: 16,
+            fontFamily: "system-ui",
+          }}
+        >
           <h2 style={{ marginTop: 0 }}>Antes do Treino…</h2>
           <p style={{ opacity: 0.85 }}>
-            Seu perfil precisa estar completo para registrar treino: <b>Nome</b>, <b>Sexo</b> e <b>Fuso horário</b>.
+            Seu perfil precisa estar completo para registrar treino: <b>Nome</b>,{" "}
+            <b>Sexo</b> e <b>Fuso horário</b>.
           </p>
           <p style={{ marginTop: 12 }}>
             <Link href="/perfil">Ir para Perfil</Link>
@@ -140,7 +151,9 @@ export default async function TreinoPage() {
           <p style={{ marginTop: 10, opacity: 0.85 }}>
             Isso normalmente é <b>RLS</b> ou <b>constraint</b> no banco.
           </p>
-          <pre style={{ marginTop: 12, fontSize: 12, whiteSpace: "pre-wrap" }}>{formatSupabaseError(insErr)}</pre>
+          <pre style={{ marginTop: 12, fontSize: 12, whiteSpace: "pre-wrap" }}>
+            {formatSupabaseError(insErr)}
+          </pre>
           <p style={{ marginTop: 16 }}>
             <Link href="/perfil">Ir para Perfil</Link>
           </p>
@@ -177,10 +190,16 @@ export default async function TreinoPage() {
 
   const athleteSexoPt = mapSexoToPt(athlete.sexo);
 
+  // ✅ "Hoje" no fuso do atleta (YYYY-MM-DD)
+  const hojeLocal = new Date().toLocaleDateString("en-CA", {
+    timeZone: athlete.timezone,
+  });
+
   const { data: sessoes, error: sError } = await supabase
     .from("sessoes_treino")
     .select("id, data_local, hora_local, tipo_treino, minutos, pse_sessao, created_at")
     .eq("athlete_id", athlete.id)
+    .eq("data_local", hojeLocal)
     .order("created_at", { ascending: false })
     .limit(25);
 
@@ -219,7 +238,7 @@ export default async function TreinoPage() {
 
       <hr style={{ margin: "20px 0", opacity: 0.2 }} />
 
-      <h3 style={{ marginTop: 0 }}>Histórico — Sessões de Treino</h3>
+      <h3 style={{ marginTop: 0 }}>Histórico — Sessões de Treino (hoje)</h3>
 
       {sError ? (
         <p>Erro ao carregar sessões: {sError.message}</p>
@@ -234,6 +253,7 @@ export default async function TreinoPage() {
                 <th style={{ padding: "8px 6px" }}>Tipo</th>
                 <th style={{ padding: "8px 6px" }}>Min</th>
                 <th style={{ padding: "8px 6px" }}>PSE-sessão</th>
+                <th style={{ padding: "8px 6px" }}>Ações</th>
               </tr>
             </thead>
             <tbody>
@@ -244,13 +264,16 @@ export default async function TreinoPage() {
                   <td style={{ padding: "8px 6px" }}>{r.tipo_treino}</td>
                   <td style={{ padding: "8px 6px" }}>{r.minutos}</td>
                   <td style={{ padding: "8px 6px" }}>{r.pse_sessao}</td>
+                  <td style={{ padding: "8px 6px" }}>
+                    <DeleteSessaoButton id={r.id} />
+                  </td>
                 </tr>
               ))}
 
               {(sessoes?.length ?? 0) === 0 && (
                 <tr>
-                  <td colSpan={5} style={{ padding: "10px 6px", opacity: 0.7 }}>
-                    Nenhuma sessão registrada ainda.
+                  <td colSpan={6} style={{ padding: "10px 6px", opacity: 0.7 }}>
+                    Nenhuma sessão registrada hoje.
                   </td>
                 </tr>
               )}
