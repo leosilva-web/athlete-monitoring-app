@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import AddAthleteForm from "./AddAthleteForm";
 import DeleteAthleteButton from "./DeleteAthleteButton";
 import EditAthleteName from "./EditAthleteName";
+import InviteLinkPanel from "./InviteLinkPanel";
 
 export default async function AthletesPage() {
   const supabase = await createClient();
@@ -21,6 +22,8 @@ export default async function AthletesPage() {
   return (
     <div>
       <h2>Atletas</h2>
+
+      <InviteLinkPanel />
 
       <AddAthleteForm />
 
