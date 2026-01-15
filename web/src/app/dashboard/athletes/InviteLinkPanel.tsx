@@ -69,21 +69,7 @@ export default function InviteLinkPanel() {
           </div>
         </div>
       )}
-
-      {/* Debug opcional (se quiser esconder depois, eu removo) */}
-      <pre
-        style={{
-          marginTop: 14,
-          padding: 12,
-          borderRadius: 10,
-          overflow: "auto",
-          whiteSpace: "pre-wrap",
-          opacity: 0.85,
-          border: "1px solid rgba(255,255,255,0.12)",
-        }}
-      >
-        {result ? JSON.stringify(result, null, 2) : "Sem resultado ainda."}
-      </pre>
+      
     </section>
   );
 }
