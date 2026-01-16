@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import CoachLinkBanner from "./CoachLinkBanner";
 
 type Profile = {
   id: string;
@@ -257,6 +258,8 @@ export default function PerfilPage() {
           {isCoachOrAdmin ? <Link href="/dashboard">Dashboard</Link> : null}
         </nav>
       </header>
+
+      <CoachLinkBanner />
 
       <p style={{ opacity: 0.8, marginTop: 10 }}>
         Logado como: <b>{email || "sem email"}</b>
