@@ -16,6 +16,79 @@ type Profile = {
   role: string | null;
 };
 
+function CoachLinkBannerClient({ role, userId }: { role: string | null; userId: string | null }) {
+  const supabase = createClient();
+  const [text, setText] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function run() {
+      setText(null);
+
+      // Só atleta
+      if (role !== "athlete" || !userId) return;
+
+      // acha o athlete (owner_id = auth.uid) com fallback (id = auth.uid)
+      const { data: a1 } = await supabase
+        .from("athletes")
+        .select("id, coach_id")
+        .eq("owner_id", userId)
+        .maybeSingle();
+
+      const { data: a2 } = a1
+        ? { data: null as any }
+        : await supabase.from("athletes").select("id, coach_id").eq("id", userId).maybeSingle();
+
+      const athlete = a1 ?? a2;
+      const coachId = athlete?.coach_id;
+      if (!coachId) return;
+
+      const { data: coachRow } = await supabase
+        .from("athletes")
+        .select("name")
+        .eq("id", coachId)
+        .maybeSingle();
+
+      const coachName = (coachRow?.name || "").trim() || "seu coach";
+
+      if (!alive) return;
+      setText(`Conta vinculada • Monitorado por ${coachName}`);
+    }
+
+    run();
+
+    return () => {
+      alive = false;
+    };
+  }, [role, userId, supabase]);
+
+  if (!text) return null;
+
+  return (
+    <div
+      style={{
+        margin: "10px auto 0",
+        padding: "8px 10px",
+        borderRadius: 10,
+        border: "1px solid rgba(255,255,255,0.14)",
+        background: "rgba(255,255,255,0.05)",
+        fontSize: 12,
+        opacity: 0.9,
+        maxWidth: 520,
+        textAlign: "center",
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+      }}
+      aria-label="Conta vinculada ao coach"
+      title={text}
+    >
+      {text}
+    </div>
+  );
+}
+
 export default function PerfilPage() {
   const router = useRouter();
   const supabase = createClient();
@@ -45,8 +118,7 @@ export default function PerfilPage() {
   const [newPassword, setNewPassword] = useState("");
   const [newPassword2, setNewPassword2] = useState("");
 
-  // Lista de fusos (IANA) suportados pelo navegador (mais comum/robusto)
-  // Baseado em Intl.supportedValuesOf("timeZone") (ECMA-402). :contentReference[oaicite:1]{index=1}
+  // Lista de fusos (IANA) suportados pelo navegador
   const tzOptions = useMemo(() => {
     try {
       const anyIntl = Intl as any;
@@ -57,7 +129,6 @@ export default function PerfilPage() {
     } catch {
       // ignore
     }
-    // Fallback mínimo (caso raro de navegador sem suporte)
     return [
       "America/Fortaleza",
       "America/Sao_Paulo",
@@ -182,10 +253,7 @@ export default function PerfilPage() {
         return;
       }
 
-      const { error: profErr } = await supabase
-        .from("profiles")
-        .update({ avatar_path: path })
-        .eq("id", userId);
+      const { error: profErr } = await supabase.from("profiles").update({ avatar_path: path }).eq("id", userId);
 
       if (profErr) {
         setMsg("Foto enviada, mas falha ao salvar no perfil: " + profErr.message);
@@ -194,9 +262,7 @@ export default function PerfilPage() {
 
       setAvatarPath(path);
 
-      const { data: signed, error: signedErr } = await supabase.storage
-        .from("avatars")
-        .createSignedUrl(path, 60 * 10);
+      const { data: signed, error: signedErr } = await supabase.storage.from("avatars").createSignedUrl(path, 60 * 10);
 
       if (signedErr) {
         setMsg("Foto enviada, mas falha ao gerar preview: " + signedErr.message);
@@ -258,6 +324,9 @@ export default function PerfilPage() {
         </nav>
       </header>
 
+      {/* ✅ Banner discreto (só atleta, só se tiver coach_id) */}
+      <CoachLinkBannerClient role={role} userId={userId} />
+
       <p style={{ opacity: 0.8, marginTop: 10 }}>
         Logado como: <b>{email || "sem email"}</b>
       </p>
@@ -304,11 +373,7 @@ export default function PerfilPage() {
               }}
             />
             <div style={{ opacity: 0.8, fontSize: 12 }}>
-              {uploading
-                ? "Enviando..."
-                : avatarPath
-                ? "Enviar outra imagem substitui a atual."
-                : "Escolha uma imagem (JPG/PNG)."}
+              {uploading ? "Enviando..." : avatarPath ? "Enviar outra imagem substitui a atual." : "Escolha uma imagem (JPG/PNG)."}
             </div>
           </div>
         </div>
@@ -335,12 +400,7 @@ export default function PerfilPage() {
 
           <label style={{ display: "grid", gap: 6 }}>
             <span>Data de nascimento</span>
-            <input
-              type="date"
-              value={birthDate}
-              onChange={(e) => setBirthDate(e.target.value)}
-              style={{ padding: 10 }}
-            />
+            <input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} style={{ padding: 10 }} />
           </label>
 
           <label style={{ display: "grid", gap: 6 }}>
@@ -358,9 +418,7 @@ export default function PerfilPage() {
                 </option>
               ))}
             </select>
-            <small style={{ opacity: 0.75 }}>
-              Se não encontrar, role a lista (padrão IANA).
-            </small>
+            <small style={{ opacity: 0.75 }}>Se não encontrar, role a lista (padrão IANA).</small>
           </label>
         </div>
       </section>
