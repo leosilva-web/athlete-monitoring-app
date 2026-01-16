@@ -1,67 +1,101 @@
-import { createClient } from "@/lib/supabase/server";
+"use client";
 
-export const dynamic = "force-dynamic";
+import { useEffect, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 
-export default async function CoachLinkBanner() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
+export default function CoachLinkBanner() {
+  const supabase = createClient();
+  const [text, setText] = useState<string | null>(null);
 
-  // ✅ Só mostra para atleta
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .maybeSingle();
+  useEffect(() => {
+    let alive = true;
 
-  if (profile?.role !== "athlete") return null;
+    async function run() {
+      setText(null);
 
-  // atleta logado (pelo owner_id)
-  const { data: athlete } = await supabase
-    .from("athletes")
-    .select("coach_id")
-    .eq("owner_id", user.id)
-    .maybeSingle();
+      const { data: authData } = await supabase.auth.getUser();
+      const user = authData?.user;
+      if (!user) return;
 
-  const coachId = athlete?.coach_id;
-  if (!coachId) return null;
+      // 1) Só mostra para ATHLETE (coach/admin não vê)
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .maybeSingle();
 
-  // ✅ Evita “auto-vínculo” (caso alguém setou coach_id = próprio user)
-  if (coachId === user.id) return null;
+      if (profile?.role !== "athlete") return;
 
-  const { data: coach } = await supabase
-    .from("athletes")
-    .select("name")
-    .eq("id", coachId)
-    .maybeSingle();
+      // 2) Acha o atleta logado (owner_id = auth.uid) e fallback (id = auth.uid)
+      const { data: a1 } = await supabase
+        .from("athletes")
+        .select("id, owner_id, coach_id")
+        .eq("owner_id", user.id)
+        .maybeSingle();
 
-  const coachName = coach?.name ?? "seu coach";
+      const { data: a2 } = a1
+        ? { data: null as any }
+        : await supabase
+            .from("athletes")
+            .select("id, owner_id, coach_id")
+            .eq("id", user.id)
+            .maybeSingle();
 
-  // Pequeno, discreto (canto inferior central)
+      const athlete = a1 ?? a2;
+      const coachId = athlete?.coach_id as string | null;
+      if (!coachId) return;
+
+      // 3) Nome do coach vem do PERFIL (profiles.full_name)
+      const { data: coachProfile } = await supabase
+        .from("profiles")
+        .select("full_name")
+        .eq("id", coachId)
+        .maybeSingle();
+
+      const coachName =
+        (coachProfile?.full_name || "").trim() || "Seu coach";
+
+      if (!alive) return;
+      setText(`Conta vinculada • Monitorado por ${coachName} (Coach)`);
+    }
+
+    run();
+
+    return () => {
+      alive = false;
+    };
+  }, [supabase]);
+
+  if (!text) return null;
+
+  // Visual: pequeno, discreto, no topo do conteúdo (sem “matar” a página)
   return (
     <div
       style={{
-        position: "fixed",
-        left: "50%",
-        bottom: 12,
-        transform: "translateX(-50%)",
-        zIndex: 50,
-        padding: "8px 12px",
-        borderRadius: 999,
-        border: "1px solid rgba(255,255,255,0.18)",
-        background: "rgba(0,0,0,0.55)",
-        backdropFilter: "blur(8px)",
-        fontSize: 12,
-        opacity: 0.9,
-        maxWidth: "min(92vw, 900px)",
-        whiteSpace: "nowrap",
-        overflow: "hidden",
-        textOverflow: "ellipsis",
+        marginTop: 10,
+        marginBottom: 6,
+        display: "flex",
+        justifyContent: "center",
       }}
       aria-label="Conta vinculada ao coach"
-      title={`Conta vinculada — monitorado por ${coachName}`}
     >
-      Conta vinculada • Monitorado por <b>{coachName}</b>
+      <div
+        style={{
+          padding: "8px 12px",
+          borderRadius: 999,
+          border: "1px solid rgba(255,255,255,0.14)",
+          background: "rgba(255,255,255,0.06)",
+          fontSize: 13,
+          opacity: 0.9,
+          maxWidth: 820,
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        }}
+        title={text}
+      >
+        {text}
+      </div>
     </div>
   );
 }
