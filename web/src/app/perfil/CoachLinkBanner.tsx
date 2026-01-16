@@ -5,30 +5,32 @@ import { createClient } from "@/lib/supabase/client";
 
 export default function CoachLinkBanner() {
   const supabase = createClient();
+
   const [text, setText] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
 
     async function run() {
-      // auth
-      const { data: auth } = await supabase.auth.getUser();
+      // 1) precisa estar logado
+      const { data: auth, error: authErr } = await supabase.auth.getUser();
       const user = auth?.user;
-      if (!user) return;
+      if (authErr || !user) return;
 
-      // só atleta vê
-      const { data: myProfile } = await supabase
+      // 2) só mostra para atleta
+      const { data: prof, error: profErr } = await supabase
         .from("profiles")
         .select("role")
         .eq("id", user.id)
         .maybeSingle();
 
-      if (myProfile?.role !== "athlete") return;
+      if (profErr) return;
+      if (prof?.role !== "athlete") return;
 
-      // acha o athlete do user (owner_id ou id)
+      // 3) acha o athlete do user (owner_id = auth.uid) e fallback (id = auth.uid)
       const { data: a1 } = await supabase
         .from("athletes")
-        .select("coach_id")
+        .select("id, coach_id")
         .eq("owner_id", user.id)
         .maybeSingle();
 
@@ -36,24 +38,42 @@ export default function CoachLinkBanner() {
         ? { data: null as any }
         : await supabase
             .from("athletes")
-            .select("coach_id")
+            .select("id, coach_id")
             .eq("id", user.id)
             .maybeSingle();
 
-      const coachId = (a1 ?? a2)?.coach_id as string | null;
+      const athlete = a1 ?? a2;
+      const coachId = athlete?.coach_id;
+
       if (!coachId) return;
 
-      // ✅ pega o nome do coach em PROFILES (athlete não tem permissão pra ler athletes do coach)
-      const { data: coachProfile } = await supabase
+      // 4) tenta pegar nome do coach no profiles (ideal)
+      let coachName: string | null = null;
+
+      const { data: coachProf } = await supabase
         .from("profiles")
         .select("full_name")
         .eq("id", coachId)
         .maybeSingle();
 
-      const coachName = (coachProfile?.full_name || "").trim() || "seu coach";
+      coachName = (coachProf?.full_name || "").trim() || null;
 
-      if (!alive) return;
-      setText(`Conta vinculada • Monitorado por ${coachName} (Coach)`);
+      // 5) fallback: pega nome do coach em athletes (muito mais “à prova” de RLS)
+      if (!coachName) {
+        const { data: coachAth } = await supabase
+          .from("athletes")
+          .select("name")
+          .eq("id", coachId)
+          .maybeSingle();
+
+        coachName = (coachAth?.name || "").trim() || null;
+      }
+
+      if (!coachName) coachName = "seu coach";
+
+      const finalText = `Conta vinculada • Monitorado por ${coachName} (Coach)`;
+
+      if (alive) setText(finalText);
     }
 
     run();
@@ -65,28 +85,16 @@ export default function CoachLinkBanner() {
 
   if (!text) return null;
 
+  // pequeno e discreto, central superior
   return (
     <div
       style={{
-        position: "fixed",
-        left: "50%",
-        top: 12,
-        transform: "translateX(-50%)",
-        zIndex: 50,
-        padding: "8px 12px",
-        borderRadius: 12,
-        border: "1px solid rgba(255,255,255,0.14)",
-        background: "rgba(0,0,0,0.55)",
-        backdropFilter: "blur(6px)",
+        marginTop: 10,
+        textAlign: "center",
         fontSize: 12,
-        opacity: 0.9,
-        maxWidth: 880,
-        whiteSpace: "nowrap",
-        overflow: "hidden",
-        textOverflow: "ellipsis",
+        opacity: 0.8,
       }}
       aria-label="Conta vinculada ao coach"
-      title={text}
     >
       {text}
     </div>
