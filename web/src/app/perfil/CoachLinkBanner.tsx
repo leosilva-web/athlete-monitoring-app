@@ -5,7 +5,6 @@ import { createClient } from "@/lib/supabase/client";
 
 export default function CoachLinkBanner() {
   const supabase = createClient();
-
   const [text, setText] = useState<string | null>(null);
 
   useEffect(() => {
@@ -27,57 +26,18 @@ export default function CoachLinkBanner() {
       if (profErr) return;
       if (prof?.role !== "athlete") return;
 
-      // 3) acha o athlete do user (owner_id = auth.uid) e fallback (id = auth.uid)
-      const { data: a1 } = await supabase
-        .from("athletes")
-        .select("id, coach_id")
-        .eq("owner_id", user.id)
-        .maybeSingle();
+      // 3) pega nome do coach via RPC (bypass RLS com validação por auth.uid)
+      const { data: coachName, error: rpcErr } = await supabase.rpc("get_my_coach_name");
 
-      const { data: a2 } = a1
-        ? { data: null as any }
-        : await supabase
-            .from("athletes")
-            .select("id, coach_id")
-            .eq("id", user.id)
-            .maybeSingle();
+      if (rpcErr) return;
+      const name = (coachName || "").trim();
+      if (!name) return;
 
-      const athlete = a1 ?? a2;
-      const coachId = athlete?.coach_id;
-
-      if (!coachId) return;
-
-      // 4) tenta pegar nome do coach no profiles (ideal)
-      let coachName: string | null = null;
-
-      const { data: coachProf } = await supabase
-        .from("profiles")
-        .select("full_name")
-        .eq("id", coachId)
-        .maybeSingle();
-
-      coachName = (coachProf?.full_name || "").trim() || null;
-
-      // 5) fallback: pega nome do coach em athletes (muito mais “à prova” de RLS)
-      if (!coachName) {
-        const { data: coachAth } = await supabase
-          .from("athletes")
-          .select("name")
-          .eq("id", coachId)
-          .maybeSingle();
-
-        coachName = (coachAth?.name || "").trim() || null;
-      }
-
-      if (!coachName) coachName = "seu coach";
-
-      const finalText = `Conta vinculada • Monitorado por ${coachName} (Coach)`;
-
+      const finalText = `Conta vinculada • Monitorado por ${name} (Coach)`;
       if (alive) setText(finalText);
     }
 
     run();
-
     return () => {
       alive = false;
     };
@@ -85,7 +45,6 @@ export default function CoachLinkBanner() {
 
   if (!text) return null;
 
-  // pequeno e discreto, central superior
   return (
     <div
       style={{
