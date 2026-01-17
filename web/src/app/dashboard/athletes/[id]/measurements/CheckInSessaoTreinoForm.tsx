@@ -64,7 +64,16 @@ export default function CheckInSessaoTreinoForm({ athleteId }: { athleteId: stri
     };
 
     const { error } = await supabase.from("sessoes_treino").insert(payload);
+
     if (error) {
+      const raw = (error.message || "").toLowerCase();
+
+      // Quando o atleta está bloqueado, o RLS costuma estourar assim
+      if (raw.includes("row-level security") || raw.includes("violates row-level security")) {
+        setMsg("Erro ao salvar: Acesso suspenso. Fale com seu treinador.");
+        return;
+      }
+
       setMsg(`Erro ao salvar: ${error.message}`);
       return;
     }
