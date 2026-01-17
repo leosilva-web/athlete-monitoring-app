@@ -15,7 +15,7 @@ export default async function AthletesPage() {
 
   const { data: athletes, error } = await supabase
     .from("athletes")
-    .select("id, name, created_at")
+    .select("id, owner_id, name, is_blocked, created_at")
     .order("created_at", { ascending: false })
     .limit(50);
 
