@@ -215,6 +215,37 @@ export default function PerfilPage() {
         return;
       }
 
+      // 1) sempre atualiza profiles (coach e athlete)
+const { error } = await supabase
+  .from("profiles")
+  .update({
+    full_name: fullName.trim() ? fullName.trim() : null,
+    sex: sex || null,
+    birth_date: birthDate || null,
+    team_name: teamName.trim() ? teamName.trim() : null,
+    timezone: timezone ? timezone : null,
+  })
+  .eq("id", userId);
+
+if (error) {
+  setMsg("Erro ao salvar: " + error.message);
+  return;
+}
+
+// 2) se for atleta, espelha o nome na tabela athletes também
+if (role === "athlete") {
+  const { error: athErr } = await supabase
+    .from("athletes")
+    .update({ name: fullName.trim() ? fullName.trim() : null })
+    .eq("owner_id", userId);
+
+  if (athErr) {
+    setMsg("Perfil salvo, mas falha ao atualizar nome do atleta: " + athErr.message);
+    return;
+  }
+}
+
+
       setMsg("Perfil salvo com sucesso.");
     } finally {
       setSaving(false);
