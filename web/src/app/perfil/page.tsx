@@ -21,6 +21,28 @@ type CoachLabelRow = {
   coach_name: string | null;
 };
 
+const CYCLE_PHASES = ["Menstruação", "Folicular", "Ovulação", "Lútea"] as const;
+
+const CRAMP_PAIN_OPTIONS: Array<[string, string]> = [
+  ["0", "0 — Sem dor"],
+  ["1", "1 — Muito leve"],
+  ["2", "2 — Leve"],
+  ["3", "3 — Leve a moderada"],
+  ["4", "4 — Moderada"],
+  ["5", "5 — Moderada a forte"],
+  ["6", "6 — Forte"],
+  ["7", "7 — Muito forte"],
+  ["8", "8 — Muito forte (limitante)"],
+  ["9", "9 — Quase insuportável"],
+  ["10", "10 — Insuportável"],
+];
+
+const LS_KEYS = {
+  cycleEnabled: "profile_cycle_enabled",
+  cyclePhase: "profile_cycle_phase",
+  cyclePain: "profile_cycle_pain",
+};
+
 function CoachLinkBannerClient({ role, userId }: { role: string | null; userId: string | null }) {
   const supabase = createClient();
   const [text, setText] = useState<string | null>(null);
@@ -108,6 +130,11 @@ export default function PerfilPage() {
   // Bloqueio híbrido (se atleta estiver bloqueado)
   const [isBlocked, setIsBlocked] = useState(false);
 
+  // Ciclo menstrual (UI + validação, persistido em localStorage)
+  const [trackCycle, setTrackCycle] = useState(false);
+  const [cyclePhase, setCyclePhase] = useState("");
+  const [crampPain, setCrampPain] = useState("");
+
   // Foto
   const [avatarPath, setAvatarPath] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -138,6 +165,22 @@ export default function PerfilPage() {
       "UTC",
     ];
   }, []);
+
+  // Se mudar de sexo para não-feminino, zera o bloco de ciclo.
+  useEffect(() => {
+    if (sex !== "female") {
+      setTrackCycle(false);
+      setCyclePhase("");
+      setCrampPain("");
+      try {
+        localStorage.removeItem(LS_KEYS.cycleEnabled);
+        localStorage.removeItem(LS_KEYS.cyclePhase);
+        localStorage.removeItem(LS_KEYS.cyclePain);
+      } catch {
+        // ignore
+      }
+    }
+  }, [sex]);
 
   async function loadProfile() {
     setLoading(true);
@@ -188,12 +231,28 @@ export default function PerfilPage() {
       }
     }
 
+    const sexVal = profile.sex ?? "";
+
     setFullName(profile.full_name ?? "");
-    setSex(profile.sex ?? "");
+    setSex(sexVal);
     setBirthDate(profile.birth_date ?? "");
     setTeamName(profile.team_name ?? "");
     setTimezone(profile.timezone ?? "");
     setAvatarPath(profile.avatar_path);
+
+    // Ciclo (só se feminino): carrega do localStorage
+    if (sexVal === "female") {
+      try {
+        const enabled = localStorage.getItem(LS_KEYS.cycleEnabled) === "1";
+        const phase = localStorage.getItem(LS_KEYS.cyclePhase) || "";
+        const pain = localStorage.getItem(LS_KEYS.cyclePain) || "";
+        setTrackCycle(enabled);
+        setCyclePhase(phase);
+        setCrampPain(pain);
+      } catch {
+        // ignore
+      }
+    }
 
     // Preview da foto (bucket privado -> signed url)
     if (profile.avatar_path) {
@@ -222,15 +281,34 @@ export default function PerfilPage() {
     setMsg(null);
 
     try {
+      // ✅ Validação: tudo em "Dados" obrigatório
+      const missing: string[] = [];
+      if (!fullName.trim()) missing.push("Nome");
+      if (sex !== "male" && sex !== "female") missing.push("Sexo");
+      if (!birthDate) missing.push("Data de nascimento");
+      if (!teamName.trim()) missing.push("Equipe");
+      if (!timezone) missing.push("Fuso horário (IANA)");
+
+      // ✅ Feminino -> se ativou ciclo, fase e dor/cólica obrigatórios (sem “prefiro não informar”)
+      if (sex === "female" && trackCycle) {
+        if (!cyclePhase) missing.push("Fase do ciclo menstrual");
+        if (crampPain === "") missing.push("Dor/Cólica menstrual");
+      }
+
+      if (missing.length) {
+        setMsg(`Preencha antes de salvar: ${missing.join(", ")}.`);
+        return;
+      }
+
       // 1) sempre atualiza profiles (coach e athlete)
       const { error: profileErr } = await supabase
         .from("profiles")
         .update({
-          full_name: fullName.trim() ? fullName.trim() : null,
-          sex: sex || null,
-          birth_date: birthDate || null,
-          team_name: teamName.trim() ? teamName.trim() : null,
-          timezone: timezone ? timezone : null,
+          full_name: fullName.trim(),
+          sex,
+          birth_date: birthDate,
+          team_name: teamName.trim(),
+          timezone,
         })
         .eq("id", userId);
 
@@ -244,13 +322,24 @@ export default function PerfilPage() {
       if (role === "athlete") {
         const { error: athErr } = await supabase
           .from("athletes")
-          .update({ name: fullName.trim() ? fullName.trim() : null })
+          .update({ name: fullName.trim() })
           .eq("owner_id", userId);
 
         if (athErr) {
           setMsg("Perfil salvo, mas falha ao atualizar nome do atleta: " + athErr.message);
           return;
         }
+      }
+
+      // 3) Persiste preferências do ciclo no localStorage (sem mexer em DB)
+      try {
+        if (sex === "female") {
+          localStorage.setItem(LS_KEYS.cycleEnabled, trackCycle ? "1" : "0");
+          localStorage.setItem(LS_KEYS.cyclePhase, trackCycle ? cyclePhase : "");
+          localStorage.setItem(LS_KEYS.cyclePain, trackCycle ? crampPain : "");
+        }
+      } catch {
+        // ignore
       }
 
       setMsg("Perfil salvo com sucesso.");
@@ -354,6 +443,7 @@ export default function PerfilPage() {
   }
 
   const isCoachOrAdmin = role === "coach" || role === "admin";
+  const isFemale = sex === "female";
 
   return (
     <div style={{ padding: 16, fontFamily: "system-ui", maxWidth: 900, margin: "0 auto" }}>
@@ -430,31 +520,120 @@ export default function PerfilPage() {
         <div style={{ display: "grid", gap: 12 }}>
           <label style={{ display: "grid", gap: 6 }}>
             <span>Nome</span>
-            <input value={fullName} onChange={(e) => setFullName(e.target.value)} style={{ padding: 10 }} />
+            <input
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              style={{ padding: 10 }}
+              required
+            />
           </label>
 
           <label style={{ display: "grid", gap: 6 }}>
             <span>Sexo</span>
-            <select value={sex} onChange={(e) => setSex(e.target.value)} style={{ padding: 10 }}>
+            <select
+              value={sex}
+              onChange={(e) => setSex(e.target.value)}
+              style={{ padding: 10 }}
+              required
+            >
               <option value="">Selecionar</option>
               <option value="male">Masculino</option>
               <option value="female">Feminino</option>
             </select>
           </label>
 
+          {/* ✅ Feminino -> toggle ciclo menstrual */}
+          {isFemale && (
+            <div style={{ padding: 10, borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)" }}>
+              <label style={{ display: "inline-flex", gap: 10, alignItems: "center" }}>
+                <input
+                  type="checkbox"
+                  checked={trackCycle}
+                  onChange={(e) => {
+                    const v = e.target.checked;
+                    setTrackCycle(v);
+                    if (!v) {
+                      setCyclePhase("");
+                      setCrampPain("");
+                    }
+                  }}
+                />
+                <span style={{ fontWeight: 600 }}>Registrar ciclo menstrual</span>
+              </label>
+
+              {trackCycle && (
+                <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span>Fase do ciclo menstrual</span>
+                    <select
+                      value={cyclePhase}
+                      onChange={(e) => setCyclePhase(e.target.value)}
+                      style={{ padding: 10 }}
+                      required={trackCycle}
+                    >
+                      <option value="">Selecionar</option>
+                      {CYCLE_PHASES.map((p) => (
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span>Dor/Cólica menstrual</span>
+                    <select
+                      value={crampPain}
+                      onChange={(e) => setCrampPain(e.target.value)}
+                      style={{ padding: 10 }}
+                      required={trackCycle}
+                    >
+                      <option value="">Selecionar</option>
+                      {CRAMP_PAIN_OPTIONS.map(([v, label]) => (
+                        <option key={v} value={v}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              )}
+
+              <small style={{ display: "block", marginTop: 10, opacity: 0.75 }}>
+                Isso fica salvo no dispositivo (por enquanto). Não aparece no dashboard do coach.
+              </small>
+            </div>
+          )}
+
           <label style={{ display: "grid", gap: 6 }}>
             <span>Data de nascimento</span>
-            <input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} style={{ padding: 10 }} />
+            <input
+              type="date"
+              value={birthDate}
+              onChange={(e) => setBirthDate(e.target.value)}
+              style={{ padding: 10 }}
+              required
+            />
           </label>
 
           <label style={{ display: "grid", gap: 6 }}>
             <span>Equipe</span>
-            <input value={teamName} onChange={(e) => setTeamName(e.target.value)} style={{ padding: 10 }} />
+            <input
+              value={teamName}
+              onChange={(e) => setTeamName(e.target.value)}
+              style={{ padding: 10 }}
+              required
+            />
           </label>
 
           <label style={{ display: "grid", gap: 6 }}>
             <span>Fuso horário (IANA)</span>
-            <select value={timezone} onChange={(e) => setTimezone(e.target.value)} style={{ padding: 10 }}>
+            <select
+              value={timezone}
+              onChange={(e) => setTimezone(e.target.value)}
+              style={{ padding: 10 }}
+              required
+            >
               <option value="">Selecionar</option>
               {tzOptions.map((tz) => (
                 <option key={tz} value={tz}>
