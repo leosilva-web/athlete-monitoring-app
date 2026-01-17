@@ -66,7 +66,7 @@ export default function HardDeleteAthleteButton({
       }}
       title="Apaga tudo (dados + conta). Irreversível."
     >
-      {loading ? "Deletando..." : "Deletar definitivo"}
+      {loading ? "Deletando..." : "Deletar"}
     </button>
   );
 }
