@@ -130,15 +130,14 @@ export default function CheckInBemEstarForm(props: any) {
   const [estresse, setEstresse] = useState("3");
   const [humor, setHumor] = useState("3");
 
-  // ✅ NOVO: toggle do ciclo (só para feminino)
+  // ✅ Toggle do ciclo (só para feminino)
   const [registrarCiclo, setRegistrarCiclo] = useState(false);
-
   const [fase, setFase] = useState("");
   const [intensidade, setIntensidade] = useState("");
 
   const [msg, setMsg] = useState<string | null>(null);
 
-  // ✅ NOVO: se não for feminino, zera estados do ciclo pra evitar lixo
+  // ✅ Se não for feminino, zera estados do ciclo
   useEffect(() => {
     if (!isFeminino) {
       setRegistrarCiclo(false);
@@ -155,12 +154,6 @@ export default function CheckInBemEstarForm(props: any) {
     return avg.toFixed(1);
   }, [fadiga, sono, dor, estresse, humor]);
 
-  const precisaIntensidade = useMemo(() => {
-    // ✅ NOVO: se ativou registro do ciclo, intensidade é obrigatória sempre
-    if (!isFeminino) return false;
-    return registrarCiclo;
-  }, [registrarCiclo, isFeminino]);
-
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
 
@@ -175,13 +168,13 @@ export default function CheckInBemEstarForm(props: any) {
       return;
     }
 
-    // ✅ NOVO: só exige ciclo se o toggle estiver ligado
+    // ✅ Só exige ciclo se o toggle estiver ligado
     if (isFeminino && registrarCiclo) {
       if (!fase) {
         setMsg("Selecione a fase do ciclo menstrual (obrigatório).");
         return;
       }
-      if (precisaIntensidade && !intensidade) {
+      if (!intensidade) {
         setMsg("Selecione a dor/cólica menstrual (obrigatório).");
         return;
       }
@@ -202,12 +195,11 @@ export default function CheckInBemEstarForm(props: any) {
       nivel_estresse: Number(estresse),
       humor: Number(humor),
 
-      // ✅ NOVO: grava no banco SOMENTE se toggle ligado
+      // ✅ Salva no banco SOMENTE se toggle ligado
       fase_ciclo_menstrual: isFeminino && registrarCiclo ? fase : null,
       intensidade_dor: isFeminino && registrarCiclo ? intensidade : null,
     };
 
-    // 1 registro por dia (se já existir, atualiza)
     const { error } = await supabase
       .from("checkins_bem_estar")
       .upsert(payload, { onConflict: "athlete_id,data_local" });
@@ -264,7 +256,6 @@ export default function CheckInBemEstarForm(props: any) {
 
       {isFeminino && (
         <div style={{ marginTop: 14 }}>
-          {/* ✅ NOVO: toggle */}
           <label style={{ display: "inline-flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
             <input
               type="checkbox"
