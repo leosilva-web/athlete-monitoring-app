@@ -199,7 +199,7 @@ export default function PerfilPage() {
     setMsg(null);
 
     try {
-      const { error } = await supabase
+      const { error: profileErr } = await supabase
         .from("profiles")
         .update({
           full_name: fullName.trim() ? fullName.trim() : null,
@@ -210,8 +210,8 @@ export default function PerfilPage() {
         })
         .eq("id", userId);
 
-      if (error) {
-        setMsg("Erro ao salvar: " + error.message);
+      if (profileErr) {
+        setMsg("Erro ao salvar: " + profileErr.message);
         return;
       }
 
