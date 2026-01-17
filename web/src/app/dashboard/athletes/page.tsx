@@ -50,20 +50,27 @@ export default async function AthletesPage() {
                 <div style={{ minWidth: 220 }}>
                   <b>{a.name}</b>
                   <div style={{ opacity: 0.7, fontSize: 12 }}>
-                    {isRealInvited ? "Atleta (via convite)" : "Atleta (fictício)"} · {new Date(a.created_at).toLocaleString()}
+                    {isRealInvited ? "Atleta (via convite)" : "Atleta (fictício)"} ·{" "}
+                    {new Date(a.created_at).toLocaleString()}
                   </div>
                 </div>
 
-                <EditAthleteName athleteId={a.id} initialName={a.name} />
+                {/* Editar nome: SOMENTE atleta fictício */}
+                {!isRealInvited ? <EditAthleteName athleteId={a.id} initialName={a.name} /> : null}
 
+                {/* Texto do link volta para "Medições" (rota permanece /measurements) */}
                 <Link href={`/dashboard/athletes/${a.id}/measurements`} style={{ opacity: 0.9 }}>
-                  Check-ins
+                  Medições
                 </Link>
 
                 <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                   {isRealInvited ? (
                     <>
-                      <BlockAthleteButton athleteId={a.id} athleteName={a.name} initialBlocked={!!a.is_blocked} />
+                      <BlockAthleteButton
+                        athleteId={a.id}
+                        athleteName={a.name}
+                        initialBlocked={!!a.is_blocked}
+                      />
                       <HardDeleteAthleteButton athleteId={a.id} athleteName={a.name} />
                     </>
                   ) : (
