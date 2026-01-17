@@ -5,7 +5,7 @@ import DeleteAthleteButton from "./DeleteAthleteButton";
 import EditAthleteName from "./EditAthleteName";
 import InviteLinkPanel from "./InviteLinkPanel";
 import HardDeleteAthleteButton from "./HardDeleteAthleteButton";
-import ToggleBlockAthleteButton from "./ToggleBlockAthleteButton";
+import BlockAthleteButton from "./BlockAthleteButton";
 
 export default async function AthletesPage() {
   const supabase = await createClient();
@@ -63,7 +63,7 @@ export default async function AthletesPage() {
                 <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                   {isRealInvited ? (
                     <>
-                      <ToggleBlockAthleteButton athleteId={a.id} isBlocked={!!a.is_blocked} />
+                      <BlockAthleteButton athleteId={a.id} isBlocked={!!a.is_blocked} />
                       <HardDeleteAthleteButton athleteId={a.id} athleteName={a.name} />
                     </>
                   ) : (
