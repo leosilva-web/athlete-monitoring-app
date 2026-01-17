@@ -1,53 +1,96 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
-const supabase = createClient();
-
-const OPCOES_FADIGA: Array<[number, string]> = [
-  [5, "Muito Descansado"],
-  [4, "Descansado"],
-  [3, "Normal"],
-  [2, "Cansado"],
-  [1, "Muito Cansado"],
+const OPCOES_1_A_5 = [
+  { value: "1", label: "1" },
+  { value: "2", label: "2" },
+  { value: "3", label: "3" },
+  { value: "4", label: "4" },
+  { value: "5", label: "5" },
 ];
 
-const OPCOES_SONO: Array<[number, string]> = [
-  [5, "Sono Tranquilo"],
-  [4, "Boa"],
-  [3, "Dificuldade"],
-  [2, "Sono Agitado"],
-  [1, "Insônia"],
-];
+const FASES_CICLO = [
+  "Menstruação",
+  "Fase folicular",
+  "Ovulação",
+  "Fase lútea",
+  "TPM",
+] as const;
 
-const OPCOES_DOR_MUSCULAR: Array<[number, string]> = [
-  [5, "Sentindo-se Ótimo"],
-  [4, "Sentindo-se Bem"],
-  [3, "Normal"],
-  [2, "Dolorido"],
-  [1, "Muito Dolorido"],
-];
+const INTENSIDADES_DOR = [
+  "Sem dor",
+  "Leve",
+  "Moderada",
+  "Forte",
+  "Muito forte",
+] as const;
 
-const OPCOES_ESTRESSE: Array<[number, string]> = [
-  [5, "Muito Relaxado"],
-  [4, "Relaxado"],
-  [3, "Normal"],
-  [2, "Estressado"],
-  [1, "Muito Estressado"],
-];
+function isRlsError(message: string) {
+  const m = (message || "").toLowerCase();
+  return (
+    m.includes("row-level security") ||
+    m.includes("violates row-level security") ||
+    m.includes("rls") ||
+    m.includes("policy")
+  );
+}
 
-const OPCOES_HUMOR: Array<[number, string]> = [
-  [5, "Muito Positivo"],
-  [4, "Bom Humor"],
-  [3, "Menos Interessado"],
-  [2, "Mal Humorado"],
-  [1, "Muito Irritado"],
-];
+function friendlyErrorMessage(message: string) {
+  const m = message || "";
+  if (isRlsError(m)) return "Acesso suspenso. Fale com seu treinador.";
+  return m;
+}
 
-const FASES_CICLO = ["Fase Menstrual", "Fase Folicular", "Fase Ovulatória", "Fase Lútea"] as const;
-const INTENSIDADES_DOR = ["Sem dor", "Leve", "Moderada", "Intensa", "Severa"] as const;
+function mapSexo(value: any) {
+  const v = String(value ?? "")
+    .toLowerCase()
+    .trim();
+  if (!v) return { isFeminino: false };
+  if (v === "f" || v === "feminino" || v === "female" || v === "mulher") return { isFeminino: true };
+  return { isFeminino: false };
+}
+
+function getLocalDateTime(tz: string | null | undefined) {
+  // Usa Intl para produzir data/hora no timezone IANA do atleta.
+  // Se tz for inválido, cai no horário local do servidor/navegador.
+  const now = new Date();
+  try {
+    const timeZone = tz || undefined;
+
+    const dateParts = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(now);
+
+    const y = dateParts.find((p) => p.type === "year")?.value || "0000";
+    const mo = dateParts.find((p) => p.type === "month")?.value || "00";
+    const d = dateParts.find((p) => p.type === "day")?.value || "00";
+
+    const timeStr = new Intl.DateTimeFormat("en-GB", {
+      timeZone,
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }).format(now);
+
+    return { data_local: `${y}-${mo}-${d}`, hora_local: timeStr };
+  } catch {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const y = now.getFullYear();
+    const mo = pad(now.getMonth() + 1);
+    const d = pad(now.getDate());
+    const hh = pad(now.getHours());
+    const mm = pad(now.getMinutes());
+    const ss = pad(now.getSeconds());
+    return { data_local: `${y}-${mo}-${d}`, hora_local: `${hh}:${mm}:${ss}` };
+  }
+}
 
 function SelectEscala({
   label,
@@ -58,7 +101,7 @@ function SelectEscala({
   label: string;
   value: string;
   onChange: (v: string) => void;
-  opcoes: Array<[number, string]>;
+  opcoes: { value: string; label: string }[];
 }) {
   return (
     <label style={{ display: "block" }}>
@@ -74,11 +117,10 @@ function SelectEscala({
           background: "transparent",
           color: "inherit",
         }}
-        required
       >
-        {opcoes.map(([n, d]) => (
-          <option key={n} value={String(n)} style={{ color: "#000" }}>
-            {n} — {d}
+        {opcoes.map((o) => (
+          <option key={o.value} value={o.value} style={{ color: "#000" }}>
+            {o.label}
           </option>
         ))}
       </select>
@@ -86,82 +128,76 @@ function SelectEscala({
   );
 }
 
-export default function CheckInBemEstarForm({
-  athleteId,
-  athleteSexo,
-}: {
-  athleteId: string;
-  athleteSexo: string;
-}) {
+export default function CheckInBemEstarForm(props: any) {
   const router = useRouter();
-  const sexo = (athleteSexo || "").toLowerCase();
-  const isFeminino = sexo === "feminino";
+  const supabase = createClient();
+
+  // Aceita variações de props pra não quebrar chamadas existentes:
+  const athleteId: string = props?.athleteId ?? props?.athlete_id ?? props?.id ?? "";
+  const sexo: any = props?.sexo ?? props?.gender ?? null;
+  const timezone: string | null = props?.timezone ?? props?.tz ?? null;
+
+  const { isFeminino } = mapSexo(sexo);
 
   const [pesoKg, setPesoKg] = useState("");
-
-  // defaults “neutros” (não ficam vazios)
   const [fadiga, setFadiga] = useState("3");
   const [sono, setSono] = useState("3");
   const [dor, setDor] = useState("3");
   const [estresse, setEstresse] = useState("3");
   const [humor, setHumor] = useState("3");
 
-  const [fase, setFase] = useState<string>("");
-  const [intensidade, setIntensidade] = useState<string>("");
+  const [fase, setFase] = useState("");
+  const [intensidade, setIntensidade] = useState("");
 
-  const precisaIntensidade = useMemo(() => {
-    return fase === "Fase Menstrual" || fase === "Fase Ovulatória" || fase === "Fase Lútea";
-  }, [fase]);
+  const [msg, setMsg] = useState<string | null>(null);
 
-  // ✅ Prontidão automática (média simples 1–5)
   const prontidao = useMemo(() => {
-    const v =
-      (Number(fadiga) + Number(sono) + Number(dor) + Number(estresse) + Number(humor)) / 5;
-    return Math.round(v * 10) / 10; // 1 casa decimal
+    const nums = [fadiga, sono, dor, estresse, humor].map((v) => Number(v || 0));
+    const valid = nums.every((n) => Number.isFinite(n) && n > 0);
+    if (!valid) return "-";
+    const avg = nums.reduce((a, b) => a + b, 0) / nums.length;
+    return avg.toFixed(1);
   }, [fadiga, sono, dor, estresse, humor]);
 
-  const [msg, setMsg] = useState<string>("");
-
-  function friendlyErrorMessage(raw: string) {
-    const s = raw.toLowerCase();
-
-    if (s.includes("duplicate key") || s.includes("unique") || s.includes("checkins_bem_estar_unique")) {
-      return "Você já tem um check-in de bem-estar para hoje. Vamos atualizar o mesmo registro.";
-    }
-    if (s.includes("fase") && s.includes("obrig")) {
-      return "Fase do ciclo menstrual é obrigatória para atletas do sexo feminino.";
-    }
-    if (s.includes("intensidade") && s.includes("obrig")) {
-      return "Nível de intensidade da dor é obrigatório para esta fase do ciclo.";
-    }
-    return raw;
-  }
+  const precisaIntensidade = useMemo(() => {
+    // Ajuste a regra conforme quiser. Mantive simples: pede intensidade quando houver "Menstruação" ou "TPM".
+    if (!isFeminino) return false;
+    return fase === "Menstruação" || fase === "TPM";
+  }, [fase, isFeminino]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setMsg("");
 
-    const peso = Number(pesoKg.replace(",", "."));
+    if (!athleteId) {
+      setMsg("Erro: athleteId ausente.");
+      return;
+    }
+
+    const peso = Number(String(pesoKg).replace(",", "."));
     if (!Number.isFinite(peso) || peso <= 0) {
-      setMsg("Peso inválido.");
+      setMsg("Informe um peso válido (ex.: 75,2).");
       return;
     }
 
     if (isFeminino) {
       if (!fase) {
-        setMsg("Selecione a Fase do ciclo menstrual (obrigatório).");
+        setMsg("Selecione a fase do ciclo menstrual (obrigatório).");
         return;
       }
       if (precisaIntensidade && !intensidade) {
-        setMsg("Selecione o Nível de intensidade da dor (obrigatório para esta fase).");
+        setMsg("Selecione o nível de intensidade da dor (obrigatório para esta fase).");
         return;
       }
     }
 
     setMsg("Salvando...");
 
+    const { data_local, hora_local } = getLocalDateTime(timezone);
+
     const payload: any = {
       athlete_id: athleteId,
+      data_local,
+      hora_local,
       peso_kg: peso,
       fadiga: Number(fadiga),
       qualidade_sono: Number(sono),
@@ -172,25 +208,17 @@ export default function CheckInBemEstarForm({
       intensidade_dor: isFeminino && precisaIntensidade ? intensidade : null,
     };
 
-    // ✅ 1 registro por dia (atualiza o mesmo ao salvar novamente)
-    // Requer UNIQUE (athlete_id, data_local) no banco (que você já tem/quer).
+    // 1 registro por dia (se já existir, atualiza)
     const { error } = await supabase
       .from("checkins_bem_estar")
       .upsert(payload, { onConflict: "athlete_id,data_local" });
 
-    const raw = (error.message || "").toLowerCase();
+    if (error) {
+      setMsg(`Erro ao salvar: ${friendlyErrorMessage(error.message)}`);
+      return;
+    }
 
-  // Quando o atleta está bloqueado, o RLS dispara exatamente esse tipo de erro
-  if (raw.includes("row-level security") || raw.includes("violates row-level security")) {
-    setMsg("Acesso suspenso pelo coach. Fale com ele para reativar.");
-    return;
-  }
-
-  setMsg(`Erro ao salvar: ${friendlyErrorMessage(error.message)}`);
-  return;
-}
-
-    setMsg("Salvo ✅");
+    setMsg("Salvo.");
     router.refresh();
   }
 
@@ -221,14 +249,13 @@ export default function CheckInBemEstarForm({
       </label>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
-        <SelectEscala label="Fadiga (1–5)" value={fadiga} onChange={setFadiga} opcoes={OPCOES_FADIGA} />
-        <SelectEscala label="Qualidade do Sono (1–5)" value={sono} onChange={setSono} opcoes={OPCOES_SONO} />
-        <SelectEscala label="Dor Muscular (1–5)" value={dor} onChange={setDor} opcoes={OPCOES_DOR_MUSCULAR} />
-        <SelectEscala label="Nível de Estresse (1–5)" value={estresse} onChange={setEstresse} opcoes={OPCOES_ESTRESSE} />
-        <SelectEscala label="Humor (1–5)" value={humor} onChange={setHumor} opcoes={OPCOES_HUMOR} />
+        <SelectEscala label="Fadiga (1–5)" value={fadiga} onChange={setFadiga} opcoes={OPCOES_1_A_5} />
+        <SelectEscala label="Qualidade do Sono (1–5)" value={sono} onChange={setSono} opcoes={OPCOES_1_A_5} />
+        <SelectEscala label="Dor Muscular (1–5)" value={dor} onChange={setDor} opcoes={OPCOES_1_A_5} />
+        <SelectEscala label="Nível de Estresse (1–5)" value={estresse} onChange={setEstresse} opcoes={OPCOES_1_A_5} />
+        <SelectEscala label="Humor (1–5)" value={humor} onChange={setHumor} opcoes={OPCOES_1_A_5} />
       </div>
 
-      {/* ✅ Prontidão automática */}
       <div style={{ marginTop: 12, opacity: 0.9 }}>
         <b>Prontidão (média):</b> {prontidao}
         <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
