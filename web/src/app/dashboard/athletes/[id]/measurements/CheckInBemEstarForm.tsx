@@ -178,10 +178,17 @@ export default function CheckInBemEstarForm({
       .from("checkins_bem_estar")
       .upsert(payload, { onConflict: "athlete_id,data_local" });
 
-    if (error) {
-      setMsg(`Erro ao salvar: ${friendlyErrorMessage(error.message)}`);
-      return;
-    }
+    const raw = (error.message || "").toLowerCase();
+
+  // Quando o atleta está bloqueado, o RLS dispara exatamente esse tipo de erro
+  if (raw.includes("row-level security") || raw.includes("violates row-level security")) {
+    setMsg("Acesso suspenso pelo coach. Fale com ele para reativar.");
+    return;
+  }
+
+  setMsg(`Erro ao salvar: ${friendlyErrorMessage(error.message)}`);
+  return;
+}
 
     setMsg("Salvo ✅");
     router.refresh();
