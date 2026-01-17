@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -12,21 +12,9 @@ const OPCOES_1_A_5 = [
   { value: "5", label: "5" },
 ];
 
-const FASES_CICLO = [
-  "Menstruação",
-  "Fase folicular",
-  "Ovulação",
-  "Fase lútea",
-  "TPM",
-] as const;
+const FASES_CICLO = ["Menstruação", "Fase folicular", "Ovulação", "Fase lútea", "TPM"] as const;
 
-const INTENSIDADES_DOR = [
-  "Sem dor",
-  "Leve",
-  "Moderada",
-  "Forte",
-  "Muito forte",
-] as const;
+const INTENSIDADES_DOR = ["Sem dor", "Leve", "Moderada", "Forte", "Muito forte"] as const;
 
 function isRlsError(message: string) {
   const m = (message || "").toLowerCase();
@@ -45,17 +33,13 @@ function friendlyErrorMessage(message: string) {
 }
 
 function mapSexo(value: any) {
-  const v = String(value ?? "")
-    .toLowerCase()
-    .trim();
+  const v = String(value ?? "").toLowerCase().trim();
   if (!v) return { isFeminino: false };
   if (v === "f" || v === "feminino" || v === "female" || v === "mulher") return { isFeminino: true };
   return { isFeminino: false };
 }
 
 function getLocalDateTime(tz: string | null | undefined) {
-  // Usa Intl para produzir data/hora no timezone IANA do atleta.
-  // Se tz for inválido, cai no horário local do servidor/navegador.
   const now = new Date();
   try {
     const timeZone = tz || undefined;
@@ -146,10 +130,22 @@ export default function CheckInBemEstarForm(props: any) {
   const [estresse, setEstresse] = useState("3");
   const [humor, setHumor] = useState("3");
 
+  // ✅ NOVO: toggle do ciclo (só para feminino)
+  const [registrarCiclo, setRegistrarCiclo] = useState(false);
+
   const [fase, setFase] = useState("");
   const [intensidade, setIntensidade] = useState("");
 
   const [msg, setMsg] = useState<string | null>(null);
+
+  // ✅ NOVO: se não for feminino, zera estados do ciclo pra evitar lixo
+  useEffect(() => {
+    if (!isFeminino) {
+      setRegistrarCiclo(false);
+      setFase("");
+      setIntensidade("");
+    }
+  }, [isFeminino]);
 
   const prontidao = useMemo(() => {
     const nums = [fadiga, sono, dor, estresse, humor].map((v) => Number(v || 0));
@@ -160,10 +156,10 @@ export default function CheckInBemEstarForm(props: any) {
   }, [fadiga, sono, dor, estresse, humor]);
 
   const precisaIntensidade = useMemo(() => {
-    // Ajuste a regra conforme quiser. Mantive simples: pede intensidade quando houver "Menstruação" ou "TPM".
+    // ✅ NOVO: se ativou registro do ciclo, intensidade é obrigatória sempre
     if (!isFeminino) return false;
-    return fase === "Menstruação" || fase === "TPM";
-  }, [fase, isFeminino]);
+    return registrarCiclo;
+  }, [registrarCiclo, isFeminino]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -179,13 +175,14 @@ export default function CheckInBemEstarForm(props: any) {
       return;
     }
 
-    if (isFeminino) {
+    // ✅ NOVO: só exige ciclo se o toggle estiver ligado
+    if (isFeminino && registrarCiclo) {
       if (!fase) {
         setMsg("Selecione a fase do ciclo menstrual (obrigatório).");
         return;
       }
       if (precisaIntensidade && !intensidade) {
-        setMsg("Selecione o nível de intensidade da dor (obrigatório para esta fase).");
+        setMsg("Selecione a dor/cólica menstrual (obrigatório).");
         return;
       }
     }
@@ -204,8 +201,10 @@ export default function CheckInBemEstarForm(props: any) {
       dor_muscular: Number(dor),
       nivel_estresse: Number(estresse),
       humor: Number(humor),
-      fase_ciclo_menstrual: isFeminino ? fase : null,
-      intensidade_dor: isFeminino && precisaIntensidade ? intensidade : null,
+
+      // ✅ NOVO: grava no banco SOMENTE se toggle ligado
+      fase_ciclo_menstrual: isFeminino && registrarCiclo ? fase : null,
+      intensidade_dor: isFeminino && registrarCiclo ? intensidade : null,
     };
 
     // 1 registro por dia (se já existir, atualiza)
@@ -265,36 +264,53 @@ export default function CheckInBemEstarForm(props: any) {
 
       {isFeminino && (
         <div style={{ marginTop: 14 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
-            <label style={{ display: "block" }}>
-              <div style={{ marginBottom: 6, fontWeight: 600 }}>Ciclo menstrual (obrigatório)</div>
-              <select
-                value={fase}
-                onChange={(e) => setFase(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: 10,
-                  borderRadius: 10,
-                  border: "1px solid rgba(255,255,255,0.18)",
-                  background: "transparent",
-                  color: "inherit",
-                }}
-                required
-              >
-                <option value="" disabled style={{ color: "#000" }}>
-                  Selecione...
-                </option>
-                {FASES_CICLO.map((f) => (
-                  <option key={f} value={f} style={{ color: "#000" }}>
-                    {f}
-                  </option>
-                ))}
-              </select>
-            </label>
+          {/* ✅ NOVO: toggle */}
+          <label style={{ display: "inline-flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
+            <input
+              type="checkbox"
+              checked={registrarCiclo}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                setRegistrarCiclo(checked);
+                if (!checked) {
+                  setFase("");
+                  setIntensidade("");
+                }
+              }}
+            />
+            <span style={{ fontWeight: 700 }}>Registrar ciclo menstrual</span>
+          </label>
 
-            {precisaIntensidade && (
+          {registrarCiclo && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
               <label style={{ display: "block" }}>
-                <div style={{ marginBottom: 6, fontWeight: 600 }}>Nível de intensidade da dor (obrigatório)</div>
+                <div style={{ marginBottom: 6, fontWeight: 600 }}>Fase do ciclo menstrual (obrigatório)</div>
+                <select
+                  value={fase}
+                  onChange={(e) => setFase(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: 10,
+                    borderRadius: 10,
+                    border: "1px solid rgba(255,255,255,0.18)",
+                    background: "transparent",
+                    color: "inherit",
+                  }}
+                  required
+                >
+                  <option value="" disabled style={{ color: "#000" }}>
+                    Selecione...
+                  </option>
+                  {FASES_CICLO.map((f) => (
+                    <option key={f} value={f} style={{ color: "#000" }}>
+                      {f}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label style={{ display: "block" }}>
+                <div style={{ marginBottom: 6, fontWeight: 600 }}>Dor/Cólica menstrual (obrigatório)</div>
                 <select
                   value={intensidade}
                   onChange={(e) => setIntensidade(e.target.value)}
@@ -318,8 +334,8 @@ export default function CheckInBemEstarForm(props: any) {
                   ))}
                 </select>
               </label>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       )}
 
