@@ -27,10 +27,7 @@ export default function EditAthleteName({
 
     setLoading(true);
 
-    const { error } = await supabase
-      .from("athletes")
-      .update({ name: trimmed })
-      .eq("id", athleteId);
+    const { error } = await supabase.from("athletes").update({ name: trimmed }).eq("id", athleteId);
 
     setLoading(false);
 
@@ -48,24 +45,19 @@ export default function EditAthleteName({
     setEditing(false);
   }
 
+  // ✅ Quando não estiver editando, NÃO mostra o nome (evita duplicar).
+  // Só mostra o botão "Editar".
   if (!editing) {
     return (
-      <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
-        <b>{initialName}</b>
-        <button type="button" onClick={() => setEditing(true)}>
-          Editar
-        </button>
-      </span>
+      <button type="button" onClick={() => setEditing(true)}>
+        Editar
+      </button>
     );
   }
 
   return (
     <span style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
-      <input
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        style={{ padding: 6 }}
-      />
+      <input value={name} onChange={(e) => setName(e.target.value)} style={{ padding: 6 }} />
       <button type="button" onClick={save} disabled={loading}>
         {loading ? "Salvando..." : "Salvar"}
       </button>
