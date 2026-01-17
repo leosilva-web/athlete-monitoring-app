@@ -4,6 +4,7 @@ import AddAthleteForm from "./AddAthleteForm";
 import DeleteAthleteButton from "./DeleteAthleteButton";
 import EditAthleteName from "./EditAthleteName";
 import InviteLinkPanel from "./InviteLinkPanel";
+import BlockAthleteButton from "./BlockAthleteButton";
 
 export default async function AthletesPage() {
   const supabase = await createClient();
@@ -66,6 +67,14 @@ export default async function AthletesPage() {
               >
                 Medições
               </Link>
+
+              {a.owner_id === a.id ? (
+               <BlockAthleteButton
+                 athleteId={a.id}
+                 athleteName={a.name}
+                 initialBlocked={!!a.is_blocked}
+               />
+             ) : null}
 
               <DeleteAthleteButton athleteId={a.id} athleteName={a.name} />
             </div>
