@@ -4,7 +4,8 @@ import AddAthleteForm from "./AddAthleteForm";
 import DeleteAthleteButton from "./DeleteAthleteButton";
 import EditAthleteName from "./EditAthleteName";
 import InviteLinkPanel from "./InviteLinkPanel";
-import BlockAthleteButton from "./BlockAthleteButton";
+import HardDeleteAthleteButton from "./HardDeleteAthleteButton";
+import ToggleBlockAthleteButton from "./ToggleBlockAthleteButton";
 
 export default async function AthletesPage() {
   const supabase = await createClient();
@@ -14,9 +15,11 @@ export default async function AthletesPage() {
     return <div>Não autenticado.</div>;
   }
 
+  const userId = userData.user.id;
+
   const { data: athletes, error } = await supabase
     .from("athletes")
-    .select("id, owner_id, name, is_blocked, created_at")
+    .select("id, name, created_at, owner_id, coach_id, is_blocked")
     .order("created_at", { ascending: false })
     .limit(50);
 
@@ -37,49 +40,40 @@ export default async function AthletesPage() {
       </div>
 
       <ul style={{ marginTop: 12, paddingLeft: 18 }}>
-        {(athletes ?? []).map((a) => (
-          <li
-            key={a.id}
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 12,
-              padding: "6px 0",
-            }}
-          >
-            <div>
-              <EditAthleteName athleteId={a.id} initialName={a.name} />
-              <span style={{ opacity: 0.7, fontSize: 12, marginLeft: 8 }}>
-                ({new Date(a.created_at).toLocaleString()})
-              </span>
-            </div>
+        {(athletes ?? []).map((a: any) => {
+          // "Real" (via convite): tem coach_id e owner_id não é o coach
+          const isRealInvited = !!a.coach_id && a.owner_id !== userId;
 
-            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-              <Link
-                href={`/dashboard/athletes/${a.id}/measurements`}
-                style={{
-                  padding: "6px 10px",
-                  border: "1px solid rgba(255,255,255,0.18)",
-                  borderRadius: 8,
-                  textDecoration: "none",
-                }}
-              >
-                Medições
-              </Link>
+          return (
+            <li key={a.id} style={{ marginBottom: 10 }}>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                <div style={{ minWidth: 220 }}>
+                  <b>{a.name}</b>
+                  <div style={{ opacity: 0.7, fontSize: 12 }}>
+                    {isRealInvited ? "Atleta (via convite)" : "Atleta (fictício)"} · {new Date(a.created_at).toLocaleString()}
+                  </div>
+                </div>
 
-              {a.owner_id === a.id ? (
-               <BlockAthleteButton
-                 athleteId={a.id}
-                 athleteName={a.name}
-                 initialBlocked={!!a.is_blocked}
-               />
-             ) : null}
+                <EditAthleteName athleteId={a.id} initialName={a.name} />
 
-              <DeleteAthleteButton athleteId={a.id} athleteName={a.name} />
-            </div>
-          </li>
-        ))}
+                <Link href={`/dashboard/athletes/${a.id}/measurements`} style={{ opacity: 0.9 }}>
+                  Check-ins
+                </Link>
+
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  {isRealInvited ? (
+                    <>
+                      <ToggleBlockAthleteButton athleteId={a.id} isBlocked={!!a.is_blocked} />
+                      <HardDeleteAthleteButton athleteId={a.id} athleteName={a.name} />
+                    </>
+                  ) : (
+                    <DeleteAthleteButton athleteId={a.id} athleteName={a.name} />
+                  )}
+                </div>
+              </div>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
