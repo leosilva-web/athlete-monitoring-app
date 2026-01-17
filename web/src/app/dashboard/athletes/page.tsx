@@ -45,8 +45,17 @@ export default async function AthletesPage() {
           const isRealInvited = !!a.coach_id && a.owner_id !== userId;
 
           return (
-            <li key={a.id} style={{ marginBottom: 10 }}>
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <li key={a.id} style={{ marginBottom: 14 }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 12,
+                  flexWrap: "wrap",
+                }}
+              >
+                {/* ESQUERDA: nome + info */}
                 <div style={{ minWidth: 220 }}>
                   <b>{a.name}</b>
                   <div style={{ opacity: 0.7, fontSize: 12 }}>
@@ -55,22 +64,27 @@ export default async function AthletesPage() {
                   </div>
                 </div>
 
-                {/* Editar nome: SOMENTE atleta fictício */}
-                {!isRealInvited ? <EditAthleteName athleteId={a.id} initialName={a.name} /> : null}
+                {/* DIREITA: ações (como na imagem) */}
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 12,
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    justifyContent: "flex-end",
+                  }}
+                >
+                  {/* Editar nome: SOMENTE atleta fictício */}
+                  {!isRealInvited ? <EditAthleteName athleteId={a.id} initialName={a.name} /> : null}
 
-                {/* Texto do link volta para "Medições" (rota permanece /measurements) */}
-                <Link href={`/dashboard/athletes/${a.id}/measurements`} style={{ opacity: 0.9 }}>
-                  Medições
-                </Link>
+                  {/* Link "Medições" fica junto dos botões (não no meio do layout) */}
+                  <Link href={`/dashboard/athletes/${a.id}/measurements`} style={{ opacity: 0.9 }}>
+                    Medições
+                  </Link>
 
-                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                   {isRealInvited ? (
                     <>
-                      <BlockAthleteButton
-                        athleteId={a.id}
-                        athleteName={a.name}
-                        initialBlocked={!!a.is_blocked}
-                      />
+                      <BlockAthleteButton athleteId={a.id} athleteName={a.name} initialBlocked={!!a.is_blocked} />
                       <HardDeleteAthleteButton athleteId={a.id} athleteName={a.name} />
                     </>
                   ) : (
