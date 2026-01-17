@@ -105,6 +105,9 @@ export default function PerfilPage() {
   const [timezone, setTimezone] = useState("");
   const [role, setRole] = useState<string | null>(null);
 
+  // Bloqueio híbrido (se atleta estiver bloqueado)
+  const [isBlocked, setIsBlocked] = useState(false);
+
   // Foto
   const [avatarPath, setAvatarPath] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -139,6 +142,7 @@ export default function PerfilPage() {
   async function loadProfile() {
     setLoading(true);
     setMsg(null);
+    setIsBlocked(false);
 
     const { data: auth, error: authErr } = await supabase.auth.getUser();
     if (authErr || !auth?.user) {
@@ -164,7 +168,26 @@ export default function PerfilPage() {
 
     const profile = p as Profile;
 
+    // role primeiro (pra UI saber)
     setRole(profile.role);
+
+    // ✅ Bloqueio híbrido: se atleta bloqueado, derruba sessão e mostra aviso
+    if (profile.role === "athlete") {
+      const { data: ath, error: athErr } = await supabase
+        .from("athletes")
+        .select("is_blocked")
+        .eq("owner_id", auth.user.id)
+        .single();
+
+      if (!athErr && ath?.is_blocked) {
+        await supabase.auth.signOut();
+        setIsBlocked(true);
+        setMsg("Acesso suspenso pelo coach. Fale com ele para reativar.");
+        setLoading(false);
+        return;
+      }
+    }
+
     setFullName(profile.full_name ?? "");
     setSex(profile.sex ?? "");
     setBirthDate(profile.birth_date ?? "");
@@ -199,6 +222,7 @@ export default function PerfilPage() {
     setMsg(null);
 
     try {
+      // 1) sempre atualiza profiles (coach e athlete)
       const { error: profileErr } = await supabase
         .from("profiles")
         .update({
@@ -215,36 +239,19 @@ export default function PerfilPage() {
         return;
       }
 
-      // 1) sempre atualiza profiles (coach e athlete)
-const { error } = await supabase
-  .from("profiles")
-  .update({
-    full_name: fullName.trim() ? fullName.trim() : null,
-    sex: sex || null,
-    birth_date: birthDate || null,
-    team_name: teamName.trim() ? teamName.trim() : null,
-    timezone: timezone ? timezone : null,
-  })
-  .eq("id", userId);
+      // 2) se for atleta, espelha o nome na tabela athletes também
+      // (obs: se estiver bloqueado, a RLS vai impedir o update — e isso é desejado)
+      if (role === "athlete") {
+        const { error: athErr } = await supabase
+          .from("athletes")
+          .update({ name: fullName.trim() ? fullName.trim() : null })
+          .eq("owner_id", userId);
 
-if (error) {
-  setMsg("Erro ao salvar: " + error.message);
-  return;
-}
-
-// 2) se for atleta, espelha o nome na tabela athletes também
-if (role === "athlete") {
-  const { error: athErr } = await supabase
-    .from("athletes")
-    .update({ name: fullName.trim() ? fullName.trim() : null })
-    .eq("owner_id", userId);
-
-  if (athErr) {
-    setMsg("Perfil salvo, mas falha ao atualizar nome do atleta: " + athErr.message);
-    return;
-  }
-}
-
+        if (athErr) {
+          setMsg("Perfil salvo, mas falha ao atualizar nome do atleta: " + athErr.message);
+          return;
+        }
+      }
 
       setMsg("Perfil salvo com sucesso.");
     } finally {
@@ -333,6 +340,17 @@ if (role === "athlete") {
 
   if (loading) {
     return <div style={{ padding: 16, fontFamily: "system-ui" }}>Carregando perfil…</div>;
+  }
+
+  // ✅ Se bloqueado, mostra só a tela de suspensão (não renderiza o app)
+  if (role === "athlete" && isBlocked) {
+    return (
+      <div style={{ padding: 16, fontFamily: "system-ui", maxWidth: 520, margin: "40px auto" }}>
+        <h1 style={{ marginTop: 0 }}>Acesso suspenso</h1>
+        <p style={{ opacity: 0.9 }}>Acesso suspenso pelo coach. Fale com ele para reativar.</p>
+        <Link href="/login">Voltar para o login</Link>
+      </div>
+    );
   }
 
   const isCoachOrAdmin = role === "coach" || role === "admin";
