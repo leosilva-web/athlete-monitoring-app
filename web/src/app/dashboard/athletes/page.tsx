@@ -63,7 +63,7 @@ export default async function AthletesPage() {
                 <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                   {isRealInvited ? (
                     <>
-                      <BlockAthleteButton athleteId={a.id} isBlocked={!!a.is_blocked} />
+                      <BlockAthleteButton athleteId={a.id} athleteName={a.name} initialBlocked={!!a.is_blocked} />
                       <HardDeleteAthleteButton athleteId={a.id} athleteName={a.name} />
                     </>
                   ) : (
