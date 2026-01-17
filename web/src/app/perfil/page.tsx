@@ -26,11 +26,11 @@ function CoachLinkBannerClient({ role, userId }: { role: string | null; userId: 
     async function run() {
       setText(null);
 
-      // Só atleta
+      // ✅ Só atleta
       if (role !== "athlete" || !userId) return;
 
-      // acha o athlete (owner_id = auth.uid) com fallback (id = auth.uid)
-      const { data: a1 } = await supabase
+      // 1) acha o athlete do user (owner_id = auth.uid) com fallback (id = auth.uid)
+      const { data: a1, error: a1Err } = await supabase
         .from("athletes")
         .select("id, coach_id")
         .eq("owner_id", userId)
@@ -42,18 +42,39 @@ function CoachLinkBannerClient({ role, userId }: { role: string | null; userId: 
 
       const athlete = a1 ?? a2;
       const coachId = athlete?.coach_id;
+
       if (!coachId) return;
 
-      const { data: coachRow } = await supabase
-        .from("athletes")
-        .select("name")
+      // 2) tenta pegar nome do coach pelo profiles.full_name (nome “oficial”)
+      let coachName: string | null = null;
+
+      const { data: coachProf, error: coachProfErr } = await supabase
+        .from("profiles")
+        .select("full_name")
         .eq("id", coachId)
         .maybeSingle();
 
-      const coachName = (coachRow?.name || "").trim() || "seu coach";
+      if (!coachProfErr) {
+        coachName = (coachProf?.full_name || "").trim() || null;
+      }
+
+      // 3) fallback: athletes.name (caso RLS no profiles impeça)
+      if (!coachName) {
+        const { data: coachAth } = await supabase
+          .from("athletes")
+          .select("name")
+          .eq("id", coachId)
+          .maybeSingle();
+
+        coachName = (coachAth?.name || "").trim() || null;
+      }
+
+      if (!coachName) coachName = "seu coach";
 
       if (!alive) return;
-      setText(`Conta vinculada • Monitorado por ${coachName}`);
+
+      // ✅ Texto final exatamente como você pediu
+      setText(`Conta vinculada • Monitorado por ${coachName} (Coach)`);
     }
 
     run();
@@ -61,7 +82,8 @@ function CoachLinkBannerClient({ role, userId }: { role: string | null; userId: 
     return () => {
       alive = false;
     };
-  }, [role, userId, supabase]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role, userId]);
 
   if (!text) return null;
 
