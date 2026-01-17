@@ -21,10 +21,47 @@ export default function LoginPage() {
 
   async function signIn() {
     setMsg("Entrando...");
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) return setMsg(`Erro: ${error.message}`);
 
-    setMsg("Login OK ✅");
+    const userId = data.user?.id;
+    if (!userId) {
+      await supabase.auth.signOut();
+      return setMsg("Erro: usuário inválido após login.");
+    }
+
+    // Bloqueio híbrido: se atleta estiver bloqueado, derruba a sessão e mostra mensagem correta
+    const { data: prof, error: profErr } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", userId)
+      .single();
+
+    if (profErr) {
+      await supabase.auth.signOut();
+      return setMsg("Erro ao verificar perfil. Tente novamente.");
+    }
+
+    if (prof?.role === "athlete") {
+      const { data: ath, error: athErr } = await supabase
+        .from("athletes")
+        .select("is_blocked")
+        .eq("owner_id", userId)
+        .single();
+
+      if (athErr) {
+        await supabase.auth.signOut();
+        return setMsg("Erro ao verificar status do atleta. Tente novamente.");
+      }
+
+      if (ath?.is_blocked) {
+        await supabase.auth.signOut();
+        return setMsg("Acesso suspenso pelo coach. Fale com ele para reativar.");
+      }
+    }
+
+    setMsg("Login successful");
     router.push("/dashboard/athletes");
     router.refresh();
   }
@@ -62,9 +99,15 @@ export default function LoginPage() {
       />
 
       <div style={{ display: "flex", gap: 8 }}>
-        <button type="button" onClick={signIn}>Entrar</button>
-        <button type="button" onClick={signUp}>Criar conta</button>
-        <button type="button" onClick={signOut}>Sair</button>
+        <button type="button" onClick={signIn}>
+          Entrar
+        </button>
+        <button type="button" onClick={signUp}>
+          Criar conta
+        </button>
+        <button type="button" onClick={signOut}>
+          Sair
+        </button>
       </div>
 
       <p style={{ marginTop: 12 }}>{msg}</p>
