@@ -12,8 +12,10 @@ const OPCOES_1_A_5 = [
   { value: "5", label: "5" },
 ];
 
-const FASES_CICLO = ["Menstruação", "Fase folicular", "Ovulação", "Fase lútea", "TPM"] as const;
+// ✅ Atualizado conforme seu pedido:
+const FASES_CICLO = ["Menstrual", "Folicular", "Ovulatória", "Lútea"] as const;
 
+// Mantive sua lista de intensidade (não removi nada)
 const INTENSIDADES_DOR = ["Sem dor", "Leve", "Moderada", "Forte", "Muito forte"] as const;
 
 function isRlsError(message: string) {
@@ -116,9 +118,13 @@ export default function CheckInBemEstarForm(props: any) {
   const router = useRouter();
   const supabase = createClient();
 
+  // ✅ Novo: controla se deve renderizar o ciclo (só no Bem-estar do atleta)
+  // No dashboard do coach, NÃO passe viewerMode (ou passe "coach") e ele não aparece.
+  const viewerMode: "athlete" | "coach" = props?.viewerMode === "athlete" ? "athlete" : "coach";
+
   // Aceita variações de props pra não quebrar chamadas existentes:
   const athleteId: string = props?.athleteId ?? props?.athlete_id ?? props?.id ?? "";
-  const sexo: any = props?.sexo ?? props?.gender ?? null;
+  const sexo: any = props?.sexo ?? props?.gender ?? props?.athleteSexo ?? null;
   const timezone: string | null = props?.timezone ?? props?.tz ?? null;
 
   const { isFeminino } = mapSexo(sexo);
@@ -130,7 +136,7 @@ export default function CheckInBemEstarForm(props: any) {
   const [estresse, setEstresse] = useState("3");
   const [humor, setHumor] = useState("3");
 
-  // ✅ NOVO: toggle do ciclo (só para feminino)
+  // ✅ toggle do ciclo (só para feminino e só quando viewerMode="athlete")
   const [registrarCiclo, setRegistrarCiclo] = useState(false);
 
   const [fase, setFase] = useState("");
@@ -138,14 +144,16 @@ export default function CheckInBemEstarForm(props: any) {
 
   const [msg, setMsg] = useState<string | null>(null);
 
-  // ✅ NOVO: se não for feminino, zera estados do ciclo pra evitar lixo
+  const showCycleBlock = viewerMode === "athlete" && isFeminino;
+
+  // Se não deve mostrar, zera estados do ciclo pra evitar "lixo" indo pro payload
   useEffect(() => {
-    if (!isFeminino) {
+    if (!showCycleBlock) {
       setRegistrarCiclo(false);
       setFase("");
       setIntensidade("");
     }
-  }, [isFeminino]);
+  }, [showCycleBlock]);
 
   const prontidao = useMemo(() => {
     const nums = [fadiga, sono, dor, estresse, humor].map((v) => Number(v || 0));
@@ -156,10 +164,10 @@ export default function CheckInBemEstarForm(props: any) {
   }, [fadiga, sono, dor, estresse, humor]);
 
   const precisaIntensidade = useMemo(() => {
-    // ✅ NOVO: se ativou registro do ciclo, intensidade é obrigatória sempre
-    if (!isFeminino) return false;
+    // Mantive sua regra atual: se ativou registro, pede intensidade.
+    if (!showCycleBlock) return false;
     return registrarCiclo;
-  }, [registrarCiclo, isFeminino]);
+  }, [registrarCiclo, showCycleBlock]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -175,8 +183,8 @@ export default function CheckInBemEstarForm(props: any) {
       return;
     }
 
-    // ✅ NOVO: só exige ciclo se o toggle estiver ligado
-    if (isFeminino && registrarCiclo) {
+    // ✅ Só valida ciclo quando o bloco existe e o toggle está ligado
+    if (showCycleBlock && registrarCiclo) {
       if (!fase) {
         setMsg("Selecione a fase do ciclo menstrual (obrigatório).");
         return;
@@ -202,12 +210,11 @@ export default function CheckInBemEstarForm(props: any) {
       nivel_estresse: Number(estresse),
       humor: Number(humor),
 
-      // ✅ NOVO: grava no banco SOMENTE se toggle ligado
-      fase_ciclo_menstrual: isFeminino && registrarCiclo ? fase : null,
-      intensidade_dor: isFeminino && registrarCiclo ? intensidade : null,
+      // ✅ grava no banco SOMENTE se o bloco existe e o toggle está ligado
+      fase_ciclo_menstrual: showCycleBlock && registrarCiclo ? fase : null,
+      intensidade_dor: showCycleBlock && registrarCiclo ? intensidade : null,
     };
 
-    // 1 registro por dia (se já existir, atualiza)
     const { error } = await supabase
       .from("checkins_bem_estar")
       .upsert(payload, { onConflict: "athlete_id,data_local" });
@@ -262,9 +269,9 @@ export default function CheckInBemEstarForm(props: any) {
         </div>
       </div>
 
-      {isFeminino && (
+      {/* ✅ Ciclo menstrual: só aparece no Bem-estar do atleta (viewerMode="athlete") e só se feminino */}
+      {showCycleBlock && (
         <div style={{ marginTop: 14 }}>
-          {/* ✅ NOVO: toggle */}
           <label style={{ display: "inline-flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
             <input
               type="checkbox"
@@ -284,7 +291,9 @@ export default function CheckInBemEstarForm(props: any) {
           {registrarCiclo && (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
               <label style={{ display: "block" }}>
-                <div style={{ marginBottom: 6, fontWeight: 600 }}>Fase do ciclo menstrual (obrigatório)</div>
+                <div style={{ marginBottom: 6, fontWeight: 600 }}>
+                  Em qual fase do ciclo menstrual você se encontra?
+                </div>
                 <select
                   value={fase}
                   onChange={(e) => setFase(e.target.value)}

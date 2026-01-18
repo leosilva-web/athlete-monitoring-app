@@ -236,7 +236,9 @@ export default async function BemEstarPage() {
 
       <hr style={{ margin: "16px 0", opacity: 0.2 }} />
 
-      <CheckInBemEstarForm athleteId={athlete.id} athleteSexo={athleteSexoPt} />
+      <CheckInBemEstarForm athleteId={athlete.id} sexo={athlete.sexo ?? athleteSexoPt} timezone={athlete.timezone ?? null} 
+      viewerMode="athlete"
+      />
 
       <hr style={{ margin: "20px 0", opacity: 0.2 }} />
 
