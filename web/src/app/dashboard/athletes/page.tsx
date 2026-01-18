@@ -33,45 +33,30 @@ export default async function AthletesPage() {
 
   const userId = userData.user.id;
 
+  // ✅ Agora buscamos avatar_path DIRETO da tabela athletes (fonte para o dashboard do coach)
   const { data: athletes, error } = await supabase
     .from("athletes")
-    .select("id, name, created_at, owner_id, coach_id, is_blocked")
+    .select("id, name, created_at, owner_id, coach_id, is_blocked, avatar_path")
     .order("created_at", { ascending: false })
     .limit(50);
 
-  // ✅ Buscar avatar_path no profiles (fonte da verdade) e gerar signed URLs (bucket privado)
-  const ownerIds = Array.from(
-    new Set((athletes ?? []).map((a: any) => a?.owner_id).filter(Boolean))
-  ) as string[];
+  // ✅ Gerar signed URLs a partir do athletes.avatar_path (bucket privado)
+  const avatarUrlByAthleteId = new Map<string, string>();
 
-  const avatarPathById = new Map<string, string>();
-  const avatarUrlById = new Map<string, string>();
+  await Promise.all(
+    (athletes ?? []).map(async (a: any) => {
+      const path = a?.avatar_path;
+      if (!path) return;
 
-  if (ownerIds.length > 0) {
-    const { data: profiles } = await supabase
-      .from("profiles")
-      .select("id, avatar_path")
-      .in("id", ownerIds);
+      const { data: signed, error: signedErr } = await supabase.storage
+        .from("avatars")
+        .createSignedUrl(path, 60 * 10);
 
-    (profiles ?? []).forEach((p: any) => {
-      if (p?.id && p?.avatar_path) avatarPathById.set(p.id, p.avatar_path);
-    });
-
-    await Promise.all(
-      ownerIds.map(async (pid) => {
-        const path = avatarPathById.get(pid);
-        if (!path) return;
-
-        const { data: signed, error: signedErr } = await supabase.storage
-          .from("avatars")
-          .createSignedUrl(path, 60 * 10);
-
-        if (!signedErr && signed?.signedUrl) {
-          avatarUrlById.set(pid, signed.signedUrl);
-        }
-      })
-    );
-  }
+      if (!signedErr && signed?.signedUrl) {
+        avatarUrlByAthleteId.set(a.id, signed.signedUrl);
+      }
+    })
+  );
 
   return (
     <div>
@@ -95,7 +80,7 @@ export default async function AthletesPage() {
           // "Real" (via convite): tem coach_id e owner_id não é o coach
           const isRealInvited = !!a.coach_id && a.owner_id !== userId;
 
-          const avatarUrl = a.owner_id ? avatarUrlById.get(a.owner_id) ?? null : null;
+          const avatarUrl = avatarUrlByAthleteId.get(a.id) ?? null;
           const initials = initialsFromName(a.name);
 
           return (
