@@ -36,6 +36,7 @@ function CoachLinkBannerClient({ role, userId }: { role: string | null; userId: 
 
       // ✅ "DB manda": pega o nome do coach via RPC (security definer)
       const { data, error } = await supabase.rpc("get_my_coach_label");
+
       if (error) return;
 
       const row = (Array.isArray(data) ? data[0] : data) as CoachLabelRow | null;
