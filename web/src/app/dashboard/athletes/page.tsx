@@ -7,6 +7,22 @@ import InviteLinkPanel from "./InviteLinkPanel";
 import HardDeleteAthleteButton from "./HardDeleteAthleteButton";
 import BlockAthleteButton from "./BlockAthleteButton";
 
+export const dynamic = "force-dynamic";
+
+function initialsFromName(name: string) {
+  const parts = String(name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+
+  const a = parts[0][0] || "";
+  const b = parts[parts.length - 1][0] || "";
+  return (a + b).toUpperCase();
+}
+
 export default async function AthletesPage() {
   const supabase = await createClient();
   const { data: userData, error: userError } = await supabase.auth.getUser();
@@ -22,6 +38,40 @@ export default async function AthletesPage() {
     .select("id, name, created_at, owner_id, coach_id, is_blocked")
     .order("created_at", { ascending: false })
     .limit(50);
+
+  // ✅ Buscar avatar_path no profiles (fonte da verdade) e gerar signed URLs (bucket privado)
+  const ownerIds = Array.from(
+    new Set((athletes ?? []).map((a: any) => a?.owner_id).filter(Boolean))
+  ) as string[];
+
+  const avatarPathById = new Map<string, string>();
+  const avatarUrlById = new Map<string, string>();
+
+  if (ownerIds.length > 0) {
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, avatar_path")
+      .in("id", ownerIds);
+
+    (profiles ?? []).forEach((p: any) => {
+      if (p?.id && p?.avatar_path) avatarPathById.set(p.id, p.avatar_path);
+    });
+
+    await Promise.all(
+      ownerIds.map(async (pid) => {
+        const path = avatarPathById.get(pid);
+        if (!path) return;
+
+        const { data: signed, error: signedErr } = await supabase.storage
+          .from("avatars")
+          .createSignedUrl(path, 60 * 10);
+
+        if (!signedErr && signed?.signedUrl) {
+          avatarUrlById.set(pid, signed.signedUrl);
+        }
+      })
+    );
+  }
 
   return (
     <div>
@@ -39,13 +89,26 @@ export default async function AthletesPage() {
         )}
       </div>
 
-      <ul style={{ marginTop: 12, paddingLeft: 18 }}>
+      {/* ✅ remove recuo e bullets para padronizar alinhamento */}
+      <ul style={{ marginTop: 12, padding: 0, listStyle: "none" }}>
         {(athletes ?? []).map((a: any) => {
           // "Real" (via convite): tem coach_id e owner_id não é o coach
           const isRealInvited = !!a.coach_id && a.owner_id !== userId;
 
+          const avatarUrl = a.owner_id ? avatarUrlById.get(a.owner_id) ?? null : null;
+          const initials = initialsFromName(a.name);
+
           return (
-            <li key={a.id} style={{ marginBottom: 14 }}>
+            <li
+              key={a.id}
+              style={{
+                marginBottom: 14,
+                padding: 14,
+                borderRadius: 14,
+                border: "1px solid rgba(255,255,255,0.12)",
+                background: "rgba(255,255,255,0.03)",
+              }}
+            >
               <div
                 style={{
                   display: "flex",
@@ -55,16 +118,46 @@ export default async function AthletesPage() {
                   flexWrap: "wrap",
                 }}
               >
-                {/* ESQUERDA: nome + info */}
-                <div style={{ minWidth: 220 }}>
-                  <b>{a.name}</b>
-                  <div style={{ opacity: 0.7, fontSize: 12 }}>
-                    {isRealInvited ? "Atleta (via convite)" : "Atleta (fictício)"} ·{" "}
-                    {new Date(a.created_at).toLocaleString()}
+                {/* ESQUERDA: avatar + nome + info */}
+                <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 260 }}>
+                  <div
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: "50%",
+                      overflow: "hidden",
+                      border: "1px solid rgba(255,255,255,0.18)",
+                      background: "rgba(255,255,255,0.06)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}
+                    aria-label="Avatar do atleta"
+                    title={a.name}
+                  >
+                    {avatarUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={avatarUrl}
+                        alt={`avatar ${a.name}`}
+                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      />
+                    ) : (
+                      <span style={{ fontSize: 12, fontWeight: 800, opacity: 0.85 }}>{initials}</span>
+                    )}
+                  </div>
+
+                  <div style={{ display: "grid", gap: 4 }}>
+                    <div style={{ fontWeight: 800, fontSize: 16, lineHeight: 1.2 }}>{a.name}</div>
+                    <div style={{ opacity: 0.7, fontSize: 12, lineHeight: 1.2 }}>
+                      {isRealInvited ? "Atleta (via convite)" : "Atleta (fictício)"} ·{" "}
+                      {new Date(a.created_at).toLocaleString("pt-BR")}
+                    </div>
                   </div>
                 </div>
 
-                {/* DIREITA: ações (como na imagem) */}
+                {/* DIREITA: ações */}
                 <div
                   style={{
                     display: "flex",
@@ -77,7 +170,6 @@ export default async function AthletesPage() {
                   {/* Editar nome: SOMENTE atleta fictício */}
                   {!isRealInvited ? <EditAthleteName athleteId={a.id} initialName={a.name} /> : null}
 
-                  {/* Link "Medições" fica junto dos botões (não no meio do layout) */}
                   <Link href={`/dashboard/athletes/${a.id}/measurements`} style={{ opacity: 0.9 }}>
                     Medições
                   </Link>
