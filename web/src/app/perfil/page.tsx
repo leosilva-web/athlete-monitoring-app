@@ -255,9 +255,15 @@ export default function PerfilPage() {
       // 2) se for atleta, espelha o nome na tabela athletes também
       // (obs: se estiver bloqueado, a RLS vai impedir o update — e isso é desejado)
       if (role === "athlete") {
+        const sexoPt = sex === "female" ? "feminino" : sex === "male" ? "masculino" : null;
+        
         const { error: athErr } = await supabase
           .from("athletes")
-          .update({ name: fullName.trim() })
+          .update({
+            name: fullName.trim(),
+            sexo: sexoPt,
+            timezone: timezone,
+           })
           .eq("owner_id", userId);
 
         if (athErr) {
