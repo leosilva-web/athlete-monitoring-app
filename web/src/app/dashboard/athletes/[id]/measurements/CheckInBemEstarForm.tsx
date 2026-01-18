@@ -12,10 +12,10 @@ const OPCOES_1_A_5 = [
   { value: "5", label: "5" },
 ];
 
-// ✅ Atualizado conforme seu pedido:
+// ✅ Lista final das fases (como você pediu)
 const FASES_CICLO = ["Menstrual", "Folicular", "Ovulatória", "Lútea"] as const;
 
-// Mantive sua lista de intensidade (não removi nada)
+// ✅ Dor em escala 0–10
 const INTENSIDADES_DOR: Array<[string, string]> = [
   ["0", "0 — Sem dor"],
   ["1", "1"],
@@ -130,8 +130,9 @@ export default function CheckInBemEstarForm(props: any) {
   const router = useRouter();
   const supabase = createClient();
 
-  // ✅ Novo: controla se deve renderizar o ciclo (só no Bem-estar do atleta)
-  // No dashboard do coach, NÃO passe viewerMode (ou passe "coach") e ele não aparece.
+  // ✅ Controla onde aparece o bloco do ciclo
+  // - Bem-estar do atleta: passe viewerMode="athlete" e aparece (se feminino)
+  // - Dashboard do coach: não passe viewerMode (ou passe "coach") e NÃO aparece
   const viewerMode: "athlete" | "coach" = props?.viewerMode === "athlete" ? "athlete" : "coach";
 
   // Aceita variações de props pra não quebrar chamadas existentes:
@@ -148,9 +149,7 @@ export default function CheckInBemEstarForm(props: any) {
   const [estresse, setEstresse] = useState("3");
   const [humor, setHumor] = useState("3");
 
-  // ✅ toggle do ciclo (só para feminino e só quando viewerMode="athlete")
-  const [registrarCiclo, setRegistrarCiclo] = useState(false);
-
+  // ✅ Sem toggle: campos sempre disponíveis quando deve mostrar
   const [fase, setFase] = useState("");
   const [intensidade, setIntensidade] = useState("");
 
@@ -161,7 +160,6 @@ export default function CheckInBemEstarForm(props: any) {
   // Se não deve mostrar, zera estados do ciclo pra evitar "lixo" indo pro payload
   useEffect(() => {
     if (!showCycleBlock) {
-      setRegistrarCiclo(false);
       setFase("");
       setIntensidade("");
     }
@@ -174,12 +172,6 @@ export default function CheckInBemEstarForm(props: any) {
     const avg = nums.reduce((a, b) => a + b, 0) / nums.length;
     return avg.toFixed(1);
   }, [fadiga, sono, dor, estresse, humor]);
-
-  const precisaIntensidade = useMemo(() => {
-    // Mantive sua regra atual: se ativou registro, pede intensidade.
-    if (!showCycleBlock) return false;
-    return registrarCiclo;
-  }, [registrarCiclo, showCycleBlock]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -195,14 +187,14 @@ export default function CheckInBemEstarForm(props: any) {
       return;
     }
 
-    // ✅ Só valida ciclo quando o bloco existe e o toggle está ligado
-    if (showCycleBlock && registrarCiclo) {
+    // ✅ Sem toggle: se o bloco existe (atleta + feminino), fase e dor são obrigatórios
+    if (showCycleBlock) {
       if (!fase) {
         setMsg("Selecione a fase do ciclo menstrual (obrigatório).");
         return;
       }
-      if (precisaIntensidade && !intensidade) {
-        setMsg("Selecione a dor/cólica menstrual (obrigatório).");
+      if (intensidade === "") {
+        setMsg("Selecione a dor/cólica menstrual (0 a 10) (obrigatório).");
         return;
       }
     }
@@ -222,9 +214,9 @@ export default function CheckInBemEstarForm(props: any) {
       nivel_estresse: Number(estresse),
       humor: Number(humor),
 
-      // ✅ grava no banco SOMENTE se o bloco existe e o toggle está ligado
-      fase_ciclo_menstrual: showCycleBlock && registrarCiclo ? fase : null,
-      intensidade_dor: showCycleBlock && registrarCiclo ? intensidade : null,
+      // ✅ grava no banco SOMENTE se o bloco existe (atleta + feminino)
+      fase_ciclo_menstrual: showCycleBlock ? fase : null,
+      intensidade_dor: showCycleBlock ? intensidade : null,
     };
 
     const { error } = await supabase
@@ -281,82 +273,65 @@ export default function CheckInBemEstarForm(props: any) {
         </div>
       </div>
 
-      {/* ✅ Ciclo menstrual: só aparece no Bem-estar do atleta (viewerMode="athlete") e só se feminino */}
+      {/* ✅ Ciclo menstrual: aparece só no Bem-estar do atleta e só se feminino */}
       {showCycleBlock && (
         <div style={{ marginTop: 14 }}>
-          <label style={{ display: "inline-flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
-            <input
-              type="checkbox"
-              checked={registrarCiclo}
-              onChange={(e) => {
-                const checked = e.target.checked;
-                setRegistrarCiclo(checked);
-                if (!checked) {
-                  setFase("");
-                  setIntensidade("");
-                }
-              }}
-            />
-            <span style={{ fontWeight: 700 }}>Registrar ciclo menstrual</span>
-          </label>
+          {/* ✅ Mantém o TÍTULO no mesmo local (sem toggle) */}
+          <div style={{ fontWeight: 700, marginBottom: 10 }}>Registrar ciclo menstrual</div>
 
-          {registrarCiclo && (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
-              <label style={{ display: "block" }}>
-                <div style={{ marginBottom: 6, fontWeight: 600 }}>
-                  Em qual fase do ciclo menstrual você se encontra?
-                </div>
-                <select
-                  value={fase}
-                  onChange={(e) => setFase(e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: 10,
-                    borderRadius: 10,
-                    border: "1px solid rgba(255,255,255,0.18)",
-                    background: "transparent",
-                    color: "inherit",
-                  }}
-                  required
-                >
-                  <option value="" disabled style={{ color: "#000" }}>
-                    Selecione...
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
+            <label style={{ display: "block" }}>
+              <div style={{ marginBottom: 6, fontWeight: 600 }}>Em qual fase do ciclo menstrual você se encontra?</div>
+              <select
+                value={fase}
+                onChange={(e) => setFase(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: 10,
+                  borderRadius: 10,
+                  border: "1px solid rgba(255,255,255,0.18)",
+                  background: "transparent",
+                  color: "inherit",
+                }}
+                required
+              >
+                <option value="" disabled style={{ color: "#000" }}>
+                  Selecione...
+                </option>
+                {FASES_CICLO.map((f) => (
+                  <option key={f} value={f} style={{ color: "#000" }}>
+                    {f}
                   </option>
-                  {FASES_CICLO.map((f) => (
-                    <option key={f} value={f} style={{ color: "#000" }}>
-                      {f}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                ))}
+              </select>
+            </label>
 
-              <label style={{ display: "block" }}>
-                <div style={{ marginBottom: 6, fontWeight: 600 }}>Dor/Cólica menstrual (obrigatório)</div>
-                <select
-                  value={intensidade}
-                  onChange={(e) => setIntensidade(e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: 10,
-                    borderRadius: 10,
-                    border: "1px solid rgba(255,255,255,0.18)",
-                    background: "transparent",
-                    color: "inherit",
-                  }}
-                  required
-                >
-                  <option value="" disabled style={{ color: "#000" }}>
-                    Selecione...
+            <label style={{ display: "block" }}>
+              <div style={{ marginBottom: 6, fontWeight: 600 }}>Dor/Cólica menstrual (obrigatório)</div>
+              <select
+                value={intensidade}
+                onChange={(e) => setIntensidade(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: 10,
+                  borderRadius: 10,
+                  border: "1px solid rgba(255,255,255,0.18)",
+                  background: "transparent",
+                  color: "inherit",
+                }}
+                required
+              >
+                <option value="" disabled style={{ color: "#000" }}>
+                  Selecione...
+                </option>
+                {INTENSIDADES_DOR.map(([v, label]) => (
+                  <option key={v} value={v} style={{ color: "#000" }}>
+                    {label}
                   </option>
-                  {INTENSIDADES_DOR.map(([v, label]) => (
-                    <option key={v} value={v} style={{ color: "#000" }}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          )}
+                ))}
+              </select>
+            </label>
+          </div>
         </div>
       )}
 
