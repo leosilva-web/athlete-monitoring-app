@@ -16,7 +16,19 @@ const OPCOES_1_A_5 = [
 const FASES_CICLO = ["Menstrual", "Folicular", "Ovulatória", "Lútea"] as const;
 
 // Mantive sua lista de intensidade (não removi nada)
-const INTENSIDADES_DOR = ["Sem dor", "Leve", "Moderada", "Forte", "Muito forte"] as const;
+const INTENSIDADES_DOR: Array<[string, string]> = [
+  ["0", "0 — Sem dor"],
+  ["1", "1"],
+  ["2", "2"],
+  ["3", "3"],
+  ["4", "4"],
+  ["5", "5"],
+  ["6", "6"],
+  ["7", "7"],
+  ["8", "8"],
+  ["9", "9"],
+  ["10", "10 — Dor extrema"],
+];
 
 function isRlsError(message: string) {
   const m = (message || "").toLowerCase();
@@ -336,9 +348,9 @@ export default function CheckInBemEstarForm(props: any) {
                   <option value="" disabled style={{ color: "#000" }}>
                     Selecione...
                   </option>
-                  {INTENSIDADES_DOR.map((d) => (
-                    <option key={d} value={d} style={{ color: "#000" }}>
-                      {d}
+                  {INTENSIDADES_DOR.map(([v, label]) => (
+                    <option key={v} value={v} style={{ color: "#000" }}>
+                      {label}
                     </option>
                   ))}
                 </select>
