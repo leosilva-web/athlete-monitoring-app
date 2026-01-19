@@ -51,6 +51,11 @@ export default async function AthletesPage() {
       const { data: signed, error: signedErr } = await supabase.storage
         .from("avatars")
         .createSignedUrl(path, 60 * 10);
+      
+      if (signedErr) {
+        console.error("signedUrl error", { pid, path, message: signedErr.message });
+        return;
+      }
 
       if (!signedErr && signed?.signedUrl) {
         avatarUrlByAthleteId.set(a.id, signed.signedUrl);
