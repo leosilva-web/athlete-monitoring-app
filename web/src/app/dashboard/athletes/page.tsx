@@ -40,64 +40,24 @@ export default async function AthletesPage() {
     .order("created_at", { ascending: false })
     .limit(50);
 
-    // ✅ Gerar signed URLs do bucket privado "avatars"
+  // ✅ Gerar signed URLs a partir do athletes.avatar_path (bucket privado)
   const avatarUrlByAthleteId = new Map<string, string>();
 
-  // 1) Para atletas reais (via convite): foto vem do profiles.avatar_path (fonte da verdade do atleta)
-  const invitedOwnerIds = Array.from(
-    new Set(
-      (athletes ?? [])
-        .filter((a: any) => !!a?.coach_id && a?.owner_id && a.owner_id !== userId)
-        .map((a: any) => a.owner_id)
-    )
-  ) as string[];
-
-  const profileAvatarPathByOwnerId = new Map<string, string>();
-
-  if (invitedOwnerIds.length > 0) {
-    const { data: profiles, error: profErr } = await supabase
-      .from("profiles")
-      .select("id, avatar_path")
-      .in("id", invitedOwnerIds);
-
-    if (profErr) {
-      console.error("profiles avatar_path error", { message: profErr.message });
-    }
-
-    (profiles ?? []).forEach((p: any) => {
-      if (p?.id && p?.avatar_path) profileAvatarPathByOwnerId.set(p.id, p.avatar_path);
-    });
-  }
-
-  // 2) Gerar signed URLs:
-  //    - Real (via convite): usa profiles.avatar_path
-  //    - Fictício: usa athletes.avatar_path (quando existir)
   await Promise.all(
     (athletes ?? []).map(async (a: any) => {
-      const isRealInvited = !!a?.coach_id && a?.owner_id && a.owner_id !== userId;
-
-      const path = isRealInvited
-        ? profileAvatarPathByOwnerId.get(a.owner_id)
-        : a?.avatar_path;
-
+      const path = a?.avatar_path;
       if (!path) return;
 
       const { data: signed, error: signedErr } = await supabase.storage
         .from("avatars")
         .createSignedUrl(path, 60 * 10);
-
+      
       if (signedErr) {
-        console.error("createSignedUrl error", {
-          athleteId: a?.id ?? null,
-          ownerId: a?.owner_id ?? null,
-          isRealInvited,
-          path,
-          message: signedErr.message,
-        });
+        console.error("signedUrl error", { pid, path, message: signedErr.message });
         return;
       }
 
-      if (signed?.signedUrl) {
+      if (!signedErr && signed?.signedUrl) {
         avatarUrlByAthleteId.set(a.id, signed.signedUrl);
       }
     })
