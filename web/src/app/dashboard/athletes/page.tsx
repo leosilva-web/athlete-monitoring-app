@@ -53,7 +53,7 @@ export default async function AthletesPage() {
         .createSignedUrl(path, 60 * 10);
       
       if (signedErr) {
-        console.error("signedUrl error", { pid, path, message: signedErr.message });
+        console.error("signedUrl error", { path, message: signedErr.message });
         return;
       }
 
