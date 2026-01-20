@@ -286,24 +286,70 @@ export default function PerfilPage() {
   }
 
   async function uploadAvatar(file: File) {
-    if (!userId) return;
+  if (!userId) return;
 
-    setUploading(true);
-    setMsg(null);
+  setUploading(true);
+  setMsg(null);
 
-    try {
-      const ext = getFileExt(file.name);
-      const path = `${userId}/avatar.${ext}`;
+  try {
+    const ext = getFileExt(file.name);
+    const path = `${userId}/avatar.${ext}`;
 
-      const { error: upErr } = await supabase.storage.from("avatars").upload(path, file, {
-        upsert: true,
-        contentType: file.type || "image/jpeg",
-      });
+    const { error: upErr } = await supabase.storage.from("avatars").upload(path, file, {
+      upsert: true,
+      contentType: file.type || "image/jpeg",
+    });
 
-      if (upErr) {
-        setMsg("Erro ao enviar foto: " + upErr.message);
-        return;
+    if (upErr) {
+      setMsg("Erro ao enviar foto: " + upErr.message);
+      return;
+    }
+
+    // 1) Fonte da verdade: profiles.avatar_path
+    const { error: profErr } = await supabase
+      .from("profiles")
+      .update({ avatar_path: path })
+      .eq("id", userId);
+
+    if (profErr) {
+      setMsg("Foto enviada, mas falha ao salvar no perfil: " + profErr.message);
+      return;
+    }
+
+    // 2) ✅ Se for atleta, espelha em athletes.avatar_path
+    // (usar id = userId é mais seguro do que owner_id aqui)
+    if (role === "athlete") {
+      const { error: athErr } = await supabase
+        .from("athletes")
+        .update({ avatar_path: path })
+        .eq("id", userId);
+
+      if (athErr) {
+        // não quebra o fluxo: o perfil já foi salvo
+        setMsg("Foto salva no perfil, mas falhou ao espelhar no atleta: " + athErr.message);
+        // continua mesmo assim para gerar preview
       }
+    }
+
+    setAvatarPath(path);
+
+    const { data: signed, error: signedErr } = await supabase.storage
+      .from("avatars")
+      .createSignedUrl(path, 60 * 10);
+
+    if (signedErr) {
+      setMsg("Foto enviada, mas falha ao gerar preview: " + signedErr.message);
+      return;
+    }
+
+    setAvatarUrl(signed?.signedUrl ?? null);
+
+    // Se chegou aqui sem ter setado msg de erro de espelho, usa sucesso padrão
+    setMsg((prev) => (prev ? prev : "Foto atualizada com sucesso."));
+  } finally {
+    setUploading(false);
+  }
+}
 
       const { error: profErr } = await supabase.from("profiles").update({ avatar_path: path }).eq("id", userId);
 
