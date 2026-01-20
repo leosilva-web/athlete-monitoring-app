@@ -40,8 +40,12 @@ export default async function AthletesPage() {
     .order("created_at", { ascending: false })
     .limit(50);
 
-    // ✅ Gerar signed URLs do bucket privado "avatars"
+  // ✅ Gerar signed URLs do bucket privado "avatars"
   const avatarUrlByAthleteId = new Map<string, string>();
+
+  // ✅ Debug mínimo e seguro (só em DEV)
+  const isDev = process.env.NODE_ENV !== "production";
+  const avatarDebugByAthleteId = new Map<string, string>();
 
   // 1) Para atletas reais (via convite): foto vem do profiles.avatar_path (fonte da verdade do atleta)
   const invitedOwnerIds = Array.from(
@@ -61,7 +65,13 @@ export default async function AthletesPage() {
       .in("id", invitedOwnerIds);
 
     if (profErr) {
-      console.error("profiles avatar_path error", { message: profErr.message });
+      // não quebra a página; só registra debug
+      if (isDev) {
+        (athletes ?? []).forEach((a: any) => {
+          const isRealInvited = !!a?.coach_id && a?.owner_id && a.owner_id !== userId;
+          if (isRealInvited) avatarDebugByAthleteId.set(a.id, `profiles erro: ${profErr.message}`);
+        });
+      }
     }
 
     (profiles ?? []).forEach((p: any) => {
@@ -80,26 +90,36 @@ export default async function AthletesPage() {
         ? profileAvatarPathByOwnerId.get(a.owner_id)
         : a?.avatar_path;
 
-      if (!path) return;
+      if (!path) {
+        if (isDev) {
+          avatarDebugByAthleteId.set(
+            a.id,
+            isRealInvited
+              ? "sem avatar_path em profiles (ou não liberou SELECT)"
+              : "sem avatar_path em athletes"
+          );
+        }
+        return;
+      }
 
       const { data: signed, error: signedErr } = await supabase.storage
         .from("avatars")
         .createSignedUrl(path, 60 * 10);
 
       if (signedErr) {
-        console.error("createSignedUrl error", {
-          athleteId: a?.id ?? null,
-          ownerId: a?.owner_id ?? null,
-          isRealInvited,
-          path,
-          message: signedErr.message,
-        });
+        if (isDev) {
+          avatarDebugByAthleteId.set(a.id, `signedUrl erro: ${signedErr.message} | path=${path}`);
+        }
         return;
       }
 
-      if (signed?.signedUrl) {
-        avatarUrlByAthleteId.set(a.id, signed.signedUrl);
+      if (!signed?.signedUrl) {
+        if (isDev) avatarDebugByAthleteId.set(a.id, `signedUrl vazio | path=${path}`);
+        return;
       }
+
+      avatarUrlByAthleteId.set(a.id, signed.signedUrl);
+      if (isDev) avatarDebugByAthleteId.set(a.id, `ok | path=${path}`);
     })
   );
 
@@ -180,10 +200,18 @@ export default async function AthletesPage() {
 
                   <div style={{ display: "grid", gap: 4 }}>
                     <div style={{ fontWeight: 800, fontSize: 16, lineHeight: 1.2 }}>{a.name}</div>
+
                     <div style={{ opacity: 0.7, fontSize: 12, lineHeight: 1.2 }}>
                       {isRealInvited ? "Atleta (via convite)" : "Atleta (fictício)"} ·{" "}
                       {new Date(a.created_at).toLocaleString("pt-BR")}
                     </div>
+
+                    {/* ✅ Debug mínimo: só em DEV */}
+                    {isDev && (
+                      <div style={{ opacity: 0.7, fontSize: 11, lineHeight: 1.2 }}>
+                        avatar-debug: {avatarDebugByAthleteId.get(a.id) ?? "-"}
+                      </div>
+                    )}
                   </div>
                 </div>
 
