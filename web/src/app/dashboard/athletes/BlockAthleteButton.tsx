@@ -3,6 +3,23 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
+const ACTION_W = 124;
+
+const BTN_NEUTRAL = {
+  width: ACTION_W,
+  height: 34,
+  borderRadius: 10,
+  padding: "6px 10px",
+  fontWeight: 700,
+  fontSize: 14,
+  lineHeight: "20px",
+  whiteSpace: "nowrap",
+  border: "1px solid rgba(255,255,255,0.20)",
+  background: "rgba(255,255,255,0.08)",
+  color: "inherit",
+  cursor: "pointer",
+} as const;
+
 export default function BlockAthleteButton({
   athleteId,
   athleteName,
@@ -39,7 +56,6 @@ export default function BlockAthleteButton({
       }
 
       onChanged?.(next);
-      // fallback simples se você não tiver state ainda:
       window.location.reload();
     } finally {
       setLoading(false);
@@ -47,25 +63,7 @@ export default function BlockAthleteButton({
   }
 
   return (
-    <button
-      onClick={toggleBlock}
-      disabled={loading}
-      style={{
-        opacity: loading ? 0.6 : 1,
-        cursor: loading ? "not-allowed" : "pointer",
-        height: 36,
-        padding: "0 12px",
-        borderRadius: 12,
-        border: "1px solid rgba(255,255,255,0.18)",
-        background: "rgba(255,255,255,0.08)", // cinza translúcido
-        color: "inherit",
-        fontWeight: 700,
-        fontSize: 14,
-        lineHeight: "20px",
-        whiteSpace: "nowrap",
-      }}
-      title={initialBlocked ? "Liberar acesso do atleta" : "Suspender acesso do atleta"}
-    >
+    <button onClick={toggleBlock} disabled={loading} style={{ ...BTN_NEUTRAL, opacity: loading ? 0.6 : 1 }}>
       {loading ? "..." : initialBlocked ? "Desbloquear" : "Bloquear"}
     </button>
   );

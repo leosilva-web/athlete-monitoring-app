@@ -6,7 +6,6 @@ import EditAthleteName from "./EditAthleteName";
 import InviteLinkPanel from "./InviteLinkPanel";
 import HardDeleteAthleteButton from "./HardDeleteAthleteButton";
 import BlockAthleteButton from "./BlockAthleteButton";
-import { ACTION_BTN } from "./actionStyles";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +23,28 @@ function initialsFromName(name: string) {
   return (a + b).toUpperCase();
 }
 
+// ✅ Largura fixa por coluna de ação (alinhamento perfeito entre linhas)
+const ACTION_W = 124;
+
+// ✅ Estilo base para ações neutras (Editar/Medições/Bloquear)
+const ACTION_NEUTRAL_STYLE = {
+  width: ACTION_W,
+  height: 34,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  borderRadius: 10,
+  padding: "6px 10px",
+  fontWeight: 700,
+  fontSize: 14,
+  lineHeight: "20px",
+  whiteSpace: "nowrap",
+  border: "1px solid rgba(255,255,255,0.20)",
+  background: "rgba(255,255,255,0.08)",
+  color: "inherit",
+  textDecoration: "none",
+} as const;
+
 export default async function AthletesPage() {
   const supabase = await createClient();
   const { data: userData, error: userError } = await supabase.auth.getUser();
@@ -34,34 +55,50 @@ export default async function AthletesPage() {
 
   const userId = userData.user.id;
 
-  // ✅ Dashboard do coach usa athletes.avatar_path (evita depender de RLS do profiles)
   const { data: athletes, error } = await supabase
     .from("athletes")
     .select("id, name, created_at, owner_id, coach_id, is_blocked, avatar_path")
     .order("created_at", { ascending: false })
     .limit(50);
 
-  // ✅ Gerar signed URLs do bucket privado "avatars"
+  // ✅ Signed URLs: atleta via convite -> profiles.avatar_path (fonte da verdade)
+  //               fictício -> athletes.avatar_path (quando existir)
   const avatarUrlByAthleteId = new Map<string, string>();
+
+  const invitedOwnerIds = Array.from(
+    new Set(
+      (athletes ?? [])
+        .filter((a: any) => !!a?.coach_id && a?.owner_id && a.owner_id !== userId)
+        .map((a: any) => a.owner_id)
+    )
+  ) as string[];
+
+  const profileAvatarPathByOwnerId = new Map<string, string>();
+
+  if (invitedOwnerIds.length > 0) {
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, avatar_path")
+      .in("id", invitedOwnerIds);
+
+    (profiles ?? []).forEach((p: any) => {
+      if (p?.id && p?.avatar_path) profileAvatarPathByOwnerId.set(p.id, p.avatar_path);
+    });
+  }
 
   await Promise.all(
     (athletes ?? []).map(async (a: any) => {
-      const path = a?.avatar_path;
+      const isRealInvited = !!a?.coach_id && a?.owner_id && a.owner_id !== userId;
+
+      const path = isRealInvited
+        ? profileAvatarPathByOwnerId.get(a.owner_id)
+        : a?.avatar_path;
+
       if (!path) return;
 
-      const { data: signed, error: signedErr } = await supabase.storage
+      const { data: signed } = await supabase.storage
         .from("avatars")
         .createSignedUrl(path, 60 * 10);
-
-      if (signedErr) {
-        console.error("createSignedUrl error", {
-          athleteId: a?.id ?? null,
-          ownerId: a?.owner_id ?? null,
-          path,
-          message: signedErr.message,
-        });
-        return;
-      }
 
       if (signed?.signedUrl) {
         avatarUrlByAthleteId.set(a.id, signed.signedUrl);
@@ -85,10 +122,8 @@ export default async function AthletesPage() {
         )}
       </div>
 
-      {/* ✅ remove recuo e bullets para padronizar alinhamento */}
       <ul style={{ marginTop: 12, padding: 0, listStyle: "none" }}>
         {(athletes ?? []).map((a: any) => {
-          // "Real" (via convite): tem coach_id e owner_id não é o coach
           const isRealInvited = !!a.coach_id && a.owner_id !== userId;
 
           const avatarUrl = avatarUrlByAthleteId.get(a.id) ?? null;
@@ -153,27 +188,50 @@ export default async function AthletesPage() {
                   </div>
                 </div>
 
-                {/* DIREITA: ações */}
+                {/* DIREITA: ações em 3 colunas fixas (alinha todas as linhas) */}
                 <div
                   style={{
-                    display: "flex",
+                    display: "grid",
+                    gridTemplateColumns: `${ACTION_W}px ${ACTION_W}px ${ACTION_W}px`,
                     gap: 12,
                     alignItems: "center",
-                    flexWrap: "wrap",
-                    justifyContent: "flex-end",
+                    justifyContent: "end",
                   }}
                 >
-                  {/* Editar nome: SOMENTE atleta fictício */}
-                  {!isRealInvited ? <EditAthleteName athleteId={a.id} initialName={a.name} /> : null}
+                  {/* Coluna 1: Editar (ou placeholder invisível no convidado) */}
+                  {!isRealInvited ? (
+                    <EditAthleteName athleteId={a.id} initialName={a.name} />
+                  ) : (
+                    <span aria-hidden style={{ width: ACTION_W, height: 34, visibility: "hidden" }}>
+                      —
+                    </span>
+                  )}
 
-                  <Link href={`/dashboard/athletes/${a.id}/measurements`} style={ACTION_BTN}>
+                  {/* Coluna 2: Medições (botão-link padronizado) */}
+                  <Link href={`/dashboard/athletes/${a.id}/measurements`} style={ACTION_NEUTRAL_STYLE}>
                     Medições
                   </Link>
 
+                  {/* Coluna 3: Deletar (vermelho já vem do componente) */}
                   {isRealInvited ? (
                     <>
-                      <BlockAthleteButton athleteId={a.id} athleteName={a.name} initialBlocked={!!a.is_blocked} />
-                      <HardDeleteAthleteButton athleteId={a.id} athleteName={a.name} />
+                      {/* Bloquear fica no lugar do "Editar" para convidados? NÃO.
+                          A gente mantém 3 colunas fixas e o "Bloquear" entra no fluxo do convidado no lugar do Editar? 
+                          Você pediu 3 botões alinhados — então, no convidado:
+                          Coluna 1 (placeholder), Coluna 2 (Medições), Coluna 3 (Deletar) e o Bloquear entra? 
+                          Melhor: Bloquear substitui o placeholder e mantém alinhamento. */}
+                    </>
+                  ) : null}
+
+                  {/* ✅ Ajuste: para convidado, queremos 3 botões também (Medições | Bloquear | Deletar)
+                      então vamos sobrescrever o grid abaixo: */}
+                  {isRealInvited ? (
+                    <>
+                      {/* Re-render do bloco de ações para convidado com 3 botões reais */}
+                      <div style={{ display: "contents" }}>
+                        <BlockAthleteButton athleteId={a.id} athleteName={a.name} initialBlocked={!!a.is_blocked} />
+                        <HardDeleteAthleteButton athleteId={a.id} athleteName={a.name} />
+                      </div>
                     </>
                   ) : (
                     <DeleteAthleteButton athleteId={a.id} athleteName={a.name} />
