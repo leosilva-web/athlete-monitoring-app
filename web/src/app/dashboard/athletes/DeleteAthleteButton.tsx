@@ -4,23 +4,6 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-const ACTION_W = 124;
-
-const BTN_DANGER = {
-  width: ACTION_W,
-  height: 34,
-  borderRadius: 10,
-  padding: "6px 10px",
-  fontWeight: 700,
-  fontSize: 14,
-  lineHeight: "20px",
-  whiteSpace: "nowrap",
-  border: "1px solid rgba(255,80,80,0.35)",
-  background: "rgba(255,80,80,0.10)",
-  color: "inherit",
-  cursor: "pointer",
-} as const;
-
 export default function DeleteAthleteButton({
   athleteId,
   athleteName,
@@ -38,6 +21,7 @@ export default function DeleteAthleteButton({
 
     setLoading(true);
 
+    // IMPORTANTE: usar .select("id") para saber se deletou de verdade.
     const { data, error } = await supabase.from("athletes").delete().eq("id", athleteId).select("id");
 
     setLoading(false);
@@ -47,6 +31,7 @@ export default function DeleteAthleteButton({
       return;
     }
 
+    // Se não veio linha deletada, o delete NÃO aconteceu (RLS/sem permissão).
     if (!data || data.length === 0) {
       alert("Não foi possível deletar: sem permissão (RLS) ou atleta não encontrado.");
       return;
@@ -56,7 +41,26 @@ export default function DeleteAthleteButton({
   }
 
   return (
-    <button type="button" onClick={onDelete} disabled={loading} style={{ ...BTN_DANGER, opacity: loading ? 0.6 : 1 }}>
+    <button
+      type="button"
+      onClick={onDelete}
+      disabled={loading}
+      style={{
+        opacity: loading ? 0.6 : 1,
+        cursor: loading ? "not-allowed" : "pointer",
+        height: 36,
+        padding: "0 12px",
+        borderRadius: 12,
+        border: "1px solid rgba(255,80,80,0.35)",
+        background: "rgba(255,80,80,0.18)",
+        color: "inherit",
+        fontWeight: 700,
+        fontSize: 14,
+        lineHeight: "20px",
+        whiteSpace: "nowrap",
+      }}
+      title="Remove o atleta fictício. Irreversível."
+    >
       {loading ? "Deletando..." : "Deletar"}
     </button>
   );
