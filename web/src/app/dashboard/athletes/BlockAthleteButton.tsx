@@ -51,11 +51,20 @@ export default function BlockAthleteButton({
       onClick={toggleBlock}
       disabled={loading}
       style={{
-        marginLeft: 8,
-        padding: "6px 10px",
-        borderRadius: 10,
-        border: "1px solid rgba(0,0,0,0.15)",
+        opacity: loading ? 0.6 : 1,
+        cursor: loading ? "not-allowed" : "pointer",
+        height: 36,
+        padding: "0 12px",
+        borderRadius: 12,
+        border: "1px solid rgba(255,255,255,0.18)",
+        background: "rgba(255,255,255,0.08)", // cinza translúcido
+        color: "inherit",
+        fontWeight: 700,
+        fontSize: 14,
+        lineHeight: "20px",
+        whiteSpace: "nowrap",
       }}
+      title={initialBlocked ? "Liberar acesso do atleta" : "Suspender acesso do atleta"}
     >
       {loading ? "..." : initialBlocked ? "Desbloquear" : "Bloquear"}
     </button>

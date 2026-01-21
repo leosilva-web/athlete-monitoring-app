@@ -58,11 +58,17 @@ export default function HardDeleteAthleteButton({
       disabled={loading}
       style={{
         opacity: loading ? 0.6 : 1,
+        cursor: loading ? "not-allowed" : "pointer",
+        height: 36,
+        padding: "0 12px",
+        borderRadius: 12,
         border: "1px solid rgba(255,80,80,0.35)",
-        background: "rgba(255,80,80,0.10)",
-        borderRadius: 10,
-        padding: "6px 10px",
-        fontWeight: 700,
+        background: "rgba(255,80,80,0.18)",
+        color: "inherit",
+        fontWeight: 800,
+        fontSize: 14,
+        lineHeight: "20px",
+        whiteSpace: "nowrap",
       }}
       title="Apaga tudo (dados + conta). Irreversível."
     >

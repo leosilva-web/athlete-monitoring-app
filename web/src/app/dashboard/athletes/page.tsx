@@ -6,6 +6,7 @@ import EditAthleteName from "./EditAthleteName";
 import InviteLinkPanel from "./InviteLinkPanel";
 import HardDeleteAthleteButton from "./HardDeleteAthleteButton";
 import BlockAthleteButton from "./BlockAthleteButton";
+import { ACTION_BTN } from "./actionStyles";
 
 export const dynamic = "force-dynamic";
 
@@ -165,7 +166,7 @@ export default async function AthletesPage() {
                   {/* Editar nome: SOMENTE atleta fictício */}
                   {!isRealInvited ? <EditAthleteName athleteId={a.id} initialName={a.name} /> : null}
 
-                  <Link href={`/dashboard/athletes/${a.id}/measurements`} style={{ opacity: 0.9 }}>
+                  <Link href={`/dashboard/athletes/${a.id}/measurements`} style={ACTION_BTN}>
                     Medições
                   </Link>
 
